@@ -415,6 +415,11 @@ public partial class MainWindow : Window
             var keep = Note(Loc.T("capture.onchange.note"));
             keep.Foreground = Res("Warn");
             panel.Children.Add(keep);
+
+            // Takes effect on the next output tick without restarting the engine, so no
+            // port reopen and no bootloader pause for a checkbox.
+            panel.Children.Add(Check(Loc.T("capture.publish"), _cfg.PublishFrames, v => _cfg.PublishFrames = v));
+            panel.Children.Add(Note(Loc.T("capture.publish.note")));
         });
 
         AddTab(Loc.T("tab.power"), panel =>

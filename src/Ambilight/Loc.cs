@@ -175,6 +175,8 @@ public static class Loc
         ["capture.fps"] = "Потолок частоты, к/с",
         ["capture.onchange"] = "Слать только при смене цветов",
         ["capture.onchange.note"] = "Прошивка гасит ленту после 10 с молчания, поэтому одинаковый кадр всё равно повторяется раз в 2 с.",
+        ["capture.publish"] = "Отдавать снимки экрана в модуль подсветки",
+        ["capture.publish.note"] = "Кадр кладётся в разделяемую память, откуда его берёт CaseLight — подсветка корпуса. Своего захвата ему тогда не нужно. Без слушателя это просто лишнее копирование, поэтому по умолчанию выключено.",
 
         ["power.head"] = "Выключать подсветку при:",
         ["power.exit"] = "выходе из программы",
@@ -279,6 +281,8 @@ public static class Loc
         ["capture.fps"] = "Frame rate cap",
         ["capture.onchange"] = "Send only when colours change",
         ["capture.onchange.note"] = "The firmware blanks the strip after 10 s of silence, so an identical frame is still repeated every 2 s.",
+        ["capture.publish"] = "Share screen frames with the lighting module",
+        ["capture.publish.note"] = "The frame is placed in shared memory for CaseLight, the case lighting, to pick up, so it needs no capture of its own. With nothing listening this is a pointless copy, hence off by default.",
 
         ["power.head"] = "Turn the strip off on:",
         ["power.exit"] = "application exit",

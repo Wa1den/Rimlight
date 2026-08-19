@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using Ambilight.Capture;
 using Ambilight.Capture.Backends;
+using Ambilight.Leds;
 
 namespace Ambilight;
 
@@ -195,7 +196,7 @@ public sealed class AmbilightEngine : IDisposable
 
             if (haveNewFrame)
             {
-                LedLayout.Sample(_image, w, h, stride, _zones, _sampled);
+                ZoneSampler.Sample(_image, w, h, stride, _zones, _sampled);
                 everSampled = true;
                 framesThisWindow++;
             }
@@ -208,7 +209,7 @@ public sealed class AmbilightEngine : IDisposable
             {
                 double dt = startMs - lastMs;
                 lastMs = startMs;
-                _pipeline.Process(_sampled, _output, _cfg, _zones.Length, dt <= 0 ? periodMs : dt);
+                _pipeline.Process(_sampled, _output, _cfg.ToColorSettings(), _zones.Length, dt <= 0 ? periodMs : dt);
 
                 lock (_previewLock) Buffer.BlockCopy(_output, 0, _preview, 0, _output.Length);
             }

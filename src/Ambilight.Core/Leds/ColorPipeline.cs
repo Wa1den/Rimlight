@@ -1,9 +1,9 @@
 using System;
 
-namespace Ambilight;
+namespace Ambilight.Leds;
 
 /// <summary>
-/// Turns per-zone screen colours into bytes for the strip.
+/// Turns per-zone screen colours into bytes for the LEDs.
 ///
 /// Everything up to the final encode happens in linear light, which is where scaling,
 /// white balance and blending are actually meaningful. Prismatik does this arithmetic on
@@ -66,7 +66,7 @@ public sealed class ColorPipeline
     /// <param name="outRgb">Bytes for the wire, 3 per LED.</param>
     /// <param name="dtMs">Real time since the previous frame; smoothing is tied to it so
     /// the response does not change when the capture rate drops.</param>
-    public void Process(byte[] inRgb, byte[] outRgb, AmbilightConfig cfg, int ledCount, double dtMs)
+    public void Process(byte[] inRgb, byte[] outRgb, in ColorSettings cfg, int ledCount, double dtMs)
     {
         if (_smoothR.Length != ledCount) Reset(ledCount);
 
@@ -129,7 +129,7 @@ public sealed class ColorPipeline
     }
 
     /// <summary>Rises fast, falls slowly - matches how the eye reads ambient light.</summary>
-    static double Blend(double current, double target, AmbilightConfig cfg, double step)
+    static double Blend(double current, double target, in ColorSettings cfg, double step)
     {
         double a = target > current ? cfg.SmoothingRise : cfg.SmoothingFall;
         a = 1 - Math.Pow(1 - Math.Clamp(a, 0.01, 1.0), step);

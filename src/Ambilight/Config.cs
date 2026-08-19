@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ambilight.Leds;
 
 namespace Ambilight;
 
@@ -79,6 +80,25 @@ public sealed class AmbilightConfig
     /// <summary>Asymmetric smoothing: light rises quickly, falls gently.</summary>
     public double SmoothingRise { get; set; } = 0.55;
     public double SmoothingFall { get; set; } = 0.18;
+
+    /// <summary>
+    /// The subset the colour pipeline actually reads. Handing it the whole config would
+    /// tie Ambilight.Core to this application's settings file.
+    /// </summary>
+    public ColorSettings ToColorSettings() => new()
+    {
+        MaxBrightness = MaxBrightness,
+        MinLuma = MinLuma,
+        Saturation = Saturation,
+        Gamma = Gamma,
+        TemperatureK = TemperatureK,
+        GainR = GainR,
+        GainG = GainG,
+        GainB = GainB,
+        Dithering = Dithering,
+        SmoothingRise = SmoothingRise,
+        SmoothingFall = SmoothingFall
+    };
 
     // ---- output -------------------------------------------------------------
     public int MaxFps { get; set; } = 60;

@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Ambilight.Capture;
+using Ambilight.Leds;
 
 namespace Ambilight;
 

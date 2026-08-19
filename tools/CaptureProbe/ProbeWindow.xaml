@@ -1,0 +1,28 @@
+<Window x:Class="CaptureProbe.ProbeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Пробник захвата" Height="900" Width="820"
+        Background="{StaticResource Bg}"
+        UseLayoutRounding="True">
+    <DockPanel Margin="10">
+        <Border DockPanel.Dock="Top" Background="{StaticResource Panel}" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Монитор:" Foreground="{StaticResource Fg}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="MonitorBox" Width="300" VerticalAlignment="Center"/>
+                    <Button x:Name="StartAll" Content="Запустить все" Margin="16,0,0,0" Padding="10,4"/>
+                    <Button x:Name="StopAll" Content="Остановить все" Margin="8,0,0,0" Padding="10,4"/>
+                    <Button x:Name="SnapAll" Content="Сохранить кадры (PNG)" Margin="16,0,0,0" Padding="10,4"/>
+                </StackPanel>
+                <TextBlock x:Name="LogPath" Foreground="{StaticResource FgDim}" FontSize="11" Margin="0,8,0,0"/>
+                <TextBlock Foreground="{StaticResource FgDim}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Text="Честные цифры производительности снимаются по одному включённому бэкенду — три сразу конкурируют за GPU. Живучесть проверяется всеми тремя одновременно."/>
+                <TextBlock Foreground="#C8A44A" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Text="Внимание: «получение» у DDA включает ожидание следующего кадра (AcquireNextFrame блокирует), а у WGC кадры приходят колбэком, поэтому там почти ноль. Между собой эти два числа несравнимы — сравнивать нужно FPS и «свод». У GDI «получение» — настоящая стоимость StretchBlt."/>
+            </StackPanel>
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="PanelHost"/>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

@@ -1,0 +1,8 @@
+# build output
+bin/
+obj/
+dist/
+
+# runtime artefacts
+snapshots/
+*.log

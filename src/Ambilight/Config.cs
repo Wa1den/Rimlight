@@ -110,6 +110,13 @@ public sealed class AmbilightConfig
     public bool SendOnlyOnChange { get; set; } = true;
     public int KeepAliveMs { get; set; } = 2000;
 
+    /// <summary>
+    /// Mirrors every captured frame into shared memory so the case-lighting module can
+    /// work off the same picture instead of capturing the screen a second time. Off by
+    /// default - with nothing attached it is a memcpy nobody reads.
+    /// </summary>
+    public bool PublishFrames { get; set; }
+
     public bool MinimizeToTray { get; set; } = true;
     public bool Autostart { get; set; }
     public bool WriteLog { get; set; } = true;

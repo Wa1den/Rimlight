@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using Ambilight.Capture;
 using Ambilight.Capture.Backends;
+using Ambilight.Frames;
 using Ambilight.Leds;
 
 namespace Ambilight;
@@ -23,6 +24,7 @@ public sealed class AmbilightEngine : IDisposable
 
     readonly AdalightDevice _device = new();
     readonly ColorPipeline _pipeline = new();
+    readonly FramePublisher _publisher = new();
 
     HybridBackend? _capture;
     Thread? _outputThread;
@@ -50,6 +52,8 @@ public sealed class AmbilightEngine : IDisposable
     public bool IsPaused => _paused;
     public string PauseReason => _pauseReason;
     public LedZone[] Zones => _zones;
+    public string PublisherStatus => _publisher.Status;
+    public long FramesPublished => _publisher.Published;
     public HybridBackend? Capture => _capture;
     public double OutputFps { get; private set; }
 
@@ -182,6 +186,11 @@ public sealed class AmbilightEngine : IDisposable
                 RebuildZones();
             }
 
+            // Followed live rather than only at startup, so the checkbox takes effect
+            // without restarting the engine and its 2.5 s bootloader wait.
+            if (_cfg.PublishFrames) _publisher.Open();
+            else if (_publisher.IsOpen) _publisher.Close();
+
             if (_paused)
             {
                 Thread.Sleep(50);
@@ -196,6 +205,10 @@ public sealed class AmbilightEngine : IDisposable
 
             if (haveNewFrame)
             {
+                // Straight off the capture, before any of our own colour work: the module
+                // downstream has its own zones and its own correction to apply.
+                if (_cfg.PublishFrames) _publisher.Publish(_image, w, h, stride, _monitor);
+
                 ZoneSampler.Sample(_image, w, h, stride, _zones, _sampled);
                 everSampled = true;
                 framesThisWindow++;
@@ -280,6 +293,7 @@ public sealed class AmbilightEngine : IDisposable
 
         if (_cfg.OffOnExit) _device.Blackout();
         _device.Close();
+        _publisher.Close();
 
         _capture?.Stop();
         _capture?.Dispose();

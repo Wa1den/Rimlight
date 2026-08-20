@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Ambilight.Text;
 
 namespace Ambilight.Capture;
 
@@ -25,7 +26,7 @@ public sealed class MonitorInfo
     {
         get
         {
-            string name = Index > 0 ? $"Экран {Index}" : DeviceName;
+            string name = Index > 0 ? Loc.P($"Экран {Index}", $"Screen {Index}") : DeviceName;
             if (!string.IsNullOrWhiteSpace(Model)) name += " — " + Model;
             return name;
         }

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using Microsoft.Win32;
 using Ambilight.Capture;
+using Ambilight.Text;
 
 namespace Ambilight.Power;
 
@@ -87,7 +88,7 @@ public sealed class PowerWatcher : IDisposable
             {
                 // 0 = off, 1 = on, 2 = dimmed
                 _displayOff = setting.Data == 0;
-                ProbeLog.Log("питание", _displayOff ? "экран выключен" : "экран включён");
+                ProbeLog.Log(Loc.P("питание", "power"), _displayOff ? Loc.P("экран выключен", "display off") : Loc.P("экран включён", "display on"));
                 Raise();
             }
         }
@@ -102,7 +103,7 @@ public sealed class PowerWatcher : IDisposable
             _locked = false;
         else return;
 
-        ProbeLog.Log("питание", _locked ? "сессия заблокирована" : "сессия разблокирована");
+        ProbeLog.Log(Loc.P("питание", "power"), _locked ? Loc.P("сессия заблокирована", "session locked") : Loc.P("сессия разблокирована", "session unlocked"));
         Raise();
     }
 
@@ -119,7 +120,7 @@ public sealed class PowerWatcher : IDisposable
         }
         else return;
 
-        ProbeLog.Log("питание", _suspended ? "уход в сон" : "пробуждение");
+        ProbeLog.Log(Loc.P("питание", "power"), _suspended ? Loc.P("уход в сон", "going to sleep") : Loc.P("пробуждение", "resumed"));
         Raise();
     }
 

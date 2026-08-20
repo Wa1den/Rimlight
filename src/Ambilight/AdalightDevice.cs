@@ -2,6 +2,7 @@ using System;
 using System.IO.Ports;
 using System.Threading;
 using Ambilight.Capture;
+using Ambilight.Text;
 
 namespace Ambilight;
 
@@ -28,7 +29,16 @@ public sealed class AdalightDevice : IDisposable
     string _lastFailure = "";
 
     public bool IsOpen => _port?.IsOpen == true;
-    public string Status { get; private set; } = "не подключено";
+
+    /// <summary>
+    /// Set when the port could not be opened or dropped mid-stream.
+    ///
+    /// A flag rather than a substring check on the status: the warning used to look for the
+    /// Russian word for "error" inside the message, which quietly stopped working the
+    /// moment the interface could be switched to English.
+    /// </summary>
+    public bool HasError { get; private set; }
+    public string Status { get; private set; } = Loc.P("не подключено", "not connected");
     public long Reconnects { get; private set; }
     public long FramesSent { get; private set; }
     public long FramesSkipped { get; private set; }
@@ -71,32 +81,35 @@ public sealed class AdalightDevice : IDisposable
         }
         catch (Exception ex)
         {
-            Status = "ошибка открытия: " + ex.Message;
+            Status = Loc.P("ошибка открытия: ", "could not open: ") + ex.Message;
+            HasError = true;
 
             // retries run every couple of seconds; logging each one buries everything else
             if (_lastFailure != ex.Message)
             {
                 _lastFailure = ex.Message;
-                ProbeLog.Log("порт", $"{portName} не открылся: {ex.Message}" +
-                                     (ex.Message.Contains("denied") ? " (порт занят другой программой?)" : ""));
+                ProbeLog.Log(Loc.P("порт", "port"),
+                             $"{portName} " + Loc.P("не открылся: ", "failed to open: ") + ex.Message +
+                             (ex.Message.Contains("denied") ? Loc.P(" (порт занят другой программой?)", " (held by another program?)") : ""));
             }
             _port = null;
             return false;
         }
 
         _lastFailure = "";
+        HasError = false;
         if (waitBootloader)
         {
-            Status = $"открыт {portName}, жду загрузчик";
-            ProbeLog.Log("порт", $"{portName} открыт на {baud} бод, пауза {BootloaderWaitMs} мс на загрузчик");
+            Status = $"{portName}: " + Loc.P("жду загрузчик", "waiting for bootloader");
+            ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P($"открыт на {baud} бод, пауза {BootloaderWaitMs} мс на загрузчик", $"opened at {baud} baud, {BootloaderWaitMs} ms bootloader pause"));
             Thread.Sleep(BootloaderWaitMs);
         }
         else
         {
-            ProbeLog.Log("порт", $"{portName} переоткрыт под {ledCount} диодов");
+            ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P($"переоткрыт под {ledCount} диодов", $"reopened for {ledCount} LEDs"));
         }
 
-        Status = $"{portName} готов";
+        Status = $"{portName} " + Loc.P("готов", "ready");
         return true;
     }
 
@@ -138,8 +151,9 @@ public sealed class AdalightDevice : IDisposable
         }
         catch (Exception ex)
         {
-            Status = "обрыв: " + ex.Message;
-            ProbeLog.Log("порт", "запись не удалась: " + ex.Message);
+            Status = Loc.P("обрыв: ", "link lost: ") + ex.Message;
+            HasError = true;
+            ProbeLog.Log(Loc.P("порт", "port"), Loc.P("запись не удалась: ", "write failed: ") + ex.Message);
             Close();
             return false;
         }
@@ -168,7 +182,7 @@ public sealed class AdalightDevice : IDisposable
                 if (ok)
                 {
                     Reconnects++;
-                    ProbeLog.Log("порт", $"{portName} переподключён (#{Reconnects})");
+                    ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P($"переподключён (#{Reconnects})", $"reconnected (#{Reconnects})"));
                 }
                 return ok;
             }
@@ -180,7 +194,7 @@ public sealed class AdalightDevice : IDisposable
         try { _port?.Close(); } catch { /* already gone */ }
         _port?.Dispose();
         _port = null;
-        Status = "не подключено";
+        Status = Loc.P("не подключено", "not connected");
     }
 
     public void Dispose() => Close();

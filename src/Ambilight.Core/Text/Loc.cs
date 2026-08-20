@@ -4,7 +4,7 @@ using System.IO;
 using System.Text.Json;
 using Ambilight.Capture;
 
-namespace Ambilight;
+namespace Ambilight.Text;
 
 /// <summary>
 /// Strings by key. Built-in defaults are written out as JSON next to the config on first
@@ -18,14 +18,23 @@ public static class Loc
     /// the built-ins so translations can be corrected - but that also meant an old file
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it.
     /// </summary>
-    const string Version = "3";
+    const string Version = "4";
 
     public static string Language { get; private set; } = "ru";
 
     static Dictionary<string, string> _current = new();
 
-    public static string Directory => Path.Combine(
-        Path.GetDirectoryName(AmbilightConfig.Path)!, "lang");
+    /// <summary>
+    /// Set by the application on startup. The library has no config file of its own, and
+    /// two programs share these strings, so neither may assume the other's folder.
+    /// </summary>
+    public static string Directory { get; private set; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Ambilight", "lang");
+
+    public static void Configure(string directory)
+    {
+        if (!string.IsNullOrWhiteSpace(directory)) Directory = directory;
+    }
 
     public static readonly string[] Available = { "ru", "en" };
 
@@ -54,7 +63,7 @@ public static class Loc
         }
         catch (Exception ex)
         {
-            ProbeLog.Log("lang", "не удалось прочитать перевод: " + ex.Message);
+            ProbeLog.Log("lang", P("не удалось прочитать перевод: ", "could not read translation: ") + ex.Message);
         }
 
         _current = defaults;
@@ -62,6 +71,17 @@ public static class Loc
 
     /// <summary>Missing keys fall back to the key itself, so nothing ever renders blank.</summary>
     public static string T(string key) => _current.TryGetValue(key, out var v) ? v : key;
+
+    /// <summary>
+    /// A translated pair written inline, for one-off runtime text: log lines, device
+    /// statuses, the words inside a statistics line.
+    ///
+    /// These are not worth dictionary keys. A key pays off when a string is reused or
+    /// handed to a translator; a hundred and some log messages that each appear once would
+    /// only turn into a hundred names nobody ever looks up, and the English would sit far
+    /// away from the code that emits it.
+    /// </summary>
+    public static string P(string ru, string en) => Language == "en" ? en : ru;
 
     static void WriteDefaults()
     {
@@ -117,9 +137,14 @@ public static class Loc
         ["tab.color"] = "Цвет",
         ["tab.capture"] = "Захват",
         ["tab.power"] = "Питание",
+        ["tab.about"] = "О программе",
 
         ["main.boost"] = "Усилить превью",
         ["main.boost.note"] = "Поднимает яркость только на экране. Светодиод при значении 30 хорошо виден в тёмной комнате, а монитор рисует его почти чёрным.",
+        ["main.startmin"] = "Запускать свёрнутым в трей",
+        ["about.head"] = "Ambilight",
+        ["about.text"] = "Фоновая подсветка монитора по картинке с экрана.",
+        ["about.text2"] = "Кадрами может делиться с модулем подсветки корпуса.",
         ["main.tray"] = "Сворачивать в трей",
         ["main.autostart"] = "Запускать вместе с Windows",
         ["main.log"] = "Писать лог",
@@ -223,9 +248,14 @@ public static class Loc
         ["tab.color"] = "Colour",
         ["tab.capture"] = "Capture",
         ["tab.power"] = "Power",
+        ["tab.about"] = "About",
 
         ["main.boost"] = "Brighten preview",
         ["main.boost.note"] = "Affects the on-screen preview only. A value of 30 is clearly visible on an LED in a dim room, while a monitor renders it almost black.",
+        ["main.startmin"] = "Start minimised to tray",
+        ["about.head"] = "Ambilight",
+        ["about.text"] = "Bias lighting for the monitor, driven by what is on screen.",
+        ["about.text2"] = "Can share its frames with the case lighting module.",
         ["main.tray"] = "Minimise to tray",
         ["main.autostart"] = "Start with Windows",
         ["main.log"] = "Write log",

@@ -2,6 +2,7 @@ using System;
 using System.IO.MemoryMappedFiles;
 using System.Threading;
 using Ambilight.Capture;
+using Ambilight.Text;
 
 namespace Ambilight.Frames;
 
@@ -26,7 +27,7 @@ public sealed unsafe class FrameSubscriber : IDisposable
     long _lastAttachAttempt;
 
     public bool IsAttached => _ptr != null;
-    public string Status { get; private set; } = "не подключено";
+    public string Status { get; private set; } = Loc.P("не подключено", "not connected");
     public long FramesRead { get; private set; }
     public long Retries { get; private set; }
 
@@ -52,8 +53,8 @@ public sealed unsafe class FrameSubscriber : IDisposable
         catch (Exception ex)
         {
             Status = ex is System.IO.FileNotFoundException
-                ? "издатель не запущен"
-                : "не удалось подключиться: " + ex.Message;
+                ? Loc.P("издатель не запущен", "publisher is not running")
+                : Loc.P("не удалось подключиться: ", "could not attach: ") + ex.Message;
             Detach();
             return false;
         }
@@ -63,8 +64,9 @@ public sealed unsafe class FrameSubscriber : IDisposable
 
         if (magic != FrameBus.Magic || version != FrameBus.Version)
         {
-            Status = $"чужая или несовместимая шина (magic {magic:X8}, версия {version})";
-            ProbeLog.Log("шина кадров", Status);
+            Status = Loc.P($"чужая или несовместимая шина (magic {magic:X8}, версия {version})",
+                          $"foreign or incompatible bus (magic {magic:X8}, version {version})");
+            ProbeLog.Log(Loc.P("шина кадров", "frame bus"), Status);
             Detach();
             return false;
         }
@@ -72,8 +74,8 @@ public sealed unsafe class FrameSubscriber : IDisposable
         // Whatever is sitting there now belongs to the past; start from the next frame.
         _lastSeq = Volatile.Read(ref *(long*)(_ptr + FrameBus.OffSeq));
 
-        Status = "подключено";
-        ProbeLog.Log("шина кадров", $"подключились к {FrameBus.MapName}");
+        Status = Loc.P("подключено", "attached");
+        ProbeLog.Log(Loc.P("шина кадров", "frame bus"), Loc.P($"подключились к {FrameBus.MapName}", $"attached to {FrameBus.MapName}"));
         return true;
     }
 
@@ -101,7 +103,7 @@ public sealed unsafe class FrameSubscriber : IDisposable
             {
                 // The publisher stopped or retired the bus. Do not consume the sequence:
                 // when it comes back, its next frame must still read as new.
-                Status = "издатель молчит";
+                Status = Loc.P("издатель молчит", "publisher has gone quiet");
                 return false;
             }
 
@@ -113,7 +115,7 @@ public sealed unsafe class FrameSubscriber : IDisposable
             int bytes = height * stride;
             if (format != FrameBus.FormatBgra32 || bytes <= 0 || bytes > FrameBus.SlotBytes)
             {
-                Status = $"непонятный кадр {width}x{height}, формат {format}";
+                Status = Loc.P($"непонятный кадр {width}x{height}, формат {format}", $"unusable frame {width}x{height}, format {format}");
                 _lastSeq = seq;
                 return false;
             }
@@ -146,11 +148,11 @@ public sealed unsafe class FrameSubscriber : IDisposable
 
             _lastSeq = seq;
             FramesRead++;
-            Status = "подключено";
+            Status = Loc.P("подключено", "attached");
             return true;
         }
 
-        Status = "издатель пишет быстрее, чем мы читаем";
+        Status = Loc.P("издатель пишет быстрее, чем мы читаем", "publisher writes faster than we read");
         return false;
     }
 

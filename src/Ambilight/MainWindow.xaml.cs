@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using Ambilight.Capture;
 using Ambilight.Leds;
 using Ambilight.Power;
+using Ambilight.Text;
 
 namespace Ambilight;
 
@@ -55,6 +56,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         ProbeLog.Configure(AmbilightConfig.LogPath, _cfg.WriteLog);
+        Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(AmbilightConfig.Path)!, "lang"));
         Loc.Load(_cfg.Language);
 
         Icon = LoadIcon();
@@ -66,9 +68,9 @@ public partial class MainWindow : Window
         _power.Changed += (_, state) =>
         {
             string? reason =
-                state.Suspended && _cfg.OffOnSuspend ? "сон" :
-                state.Locked && _cfg.OffOnLock ? "блокировка" :
-                state.DisplayOff && _cfg.OffOnDisplayOff ? "экран выключен" :
+                state.Suspended && _cfg.OffOnSuspend ? Loc.P("сон", "sleep") :
+                state.Locked && _cfg.OffOnLock ? Loc.P("блокировка", "locked") :
+                state.DisplayOff && _cfg.OffOnDisplayOff ? Loc.P("экран выключен", "display off") :
                 null;
 
             if (reason != null) _engine.Pause(reason);
@@ -83,6 +85,8 @@ public partial class MainWindow : Window
             _power.Attach(this);
             SetupTray();
             Restart();
+
+            if (_cfg.StartMinimized) WindowState = WindowState.Minimized;
         };
 
         // the overlay is shown without activation, so its own key handler only fires while
@@ -243,7 +247,8 @@ public partial class MainWindow : Window
                 if (_rebuildingUi) return;
                 _cfg.Language = Loc.Available[Math.Max(0, _langBox.SelectedIndex)];
                 _dirty = true;
-                Loc.Load(_cfg.Language);
+                Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(AmbilightConfig.Path)!, "lang"));
+        Loc.Load(_cfg.Language);
                 BuildSettings();          // the whole panel is built in code, so rebuild it
             };
             panel.Children.Add(Labeled(Loc.T("main.language"), _langBox));
@@ -252,6 +257,7 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v));
             panel.Children.Add(Note(Loc.T("main.boost.note")));
 
+            panel.Children.Add(Check(Loc.T("main.startmin"), _cfg.StartMinimized, v => _cfg.StartMinimized = v));
             panel.Children.Add(Check(Loc.T("main.tray"), _cfg.MinimizeToTray, v =>
             {
                 _cfg.MinimizeToTray = v;
@@ -449,6 +455,17 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("power.suspend"), _cfg.OffOnSuspend, v => _cfg.OffOnSuspend = v));
         });
 
+        AddTab(Loc.T("tab.about"), panel =>
+        {
+            var head = Text(Loc.T("about.head"), size: 13);
+            head.FontWeight = FontWeights.Bold;
+            head.Margin = new Thickness(0, 0, 0, 6);
+            panel.Children.Add(head);
+
+            panel.Children.Add(Note(Loc.T("about.text")));
+            panel.Children.Add(Note(Loc.T("about.text2")));
+        });
+
         _rebuildingUi = false;
     }
 
@@ -540,6 +557,7 @@ public partial class MainWindow : Window
         _cfg.CopyFrom(_saved);
         _dirty = false;
 
+        Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(AmbilightConfig.Path)!, "lang"));
         Loc.Load(_cfg.Language);
         ProbeLog.Configure(AmbilightConfig.LogPath, _cfg.WriteLog);
         Autostart.Set(_cfg.Autostart);
@@ -596,7 +614,8 @@ public partial class MainWindow : Window
             _cfg.Save();
             _saved = _cfg.Clone();
 
-            Loc.Load(_cfg.Language);
+            Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(AmbilightConfig.Path)!, "lang"));
+        Loc.Load(_cfg.Language);
             ProbeLog.Configure(AmbilightConfig.LogPath, _cfg.WriteLog);
             BuildSettings();
             Restart();
@@ -762,8 +781,7 @@ public partial class MainWindow : Window
 
         var warnings = new List<string>();
         if (_engine.IsPaused) warnings.Add(string.Format(Loc.T("warn.paused"), _engine.PauseReason));
-        if (_engine.DeviceStatus.Contains("ошибка") || _engine.DeviceStatus.Contains("denied"))
-            warnings.Add(Loc.T("warn.port"));
+        if (_engine.DeviceHasError) warnings.Add(Loc.T("warn.port"));
 
         WarnText.Text = string.Join("\n", warnings);
         WarnText.Visibility = warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;

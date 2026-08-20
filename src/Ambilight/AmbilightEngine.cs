@@ -6,6 +6,7 @@ using Ambilight.Capture;
 using Ambilight.Capture.Backends;
 using Ambilight.Frames;
 using Ambilight.Leds;
+using Ambilight.Text;
 
 namespace Ambilight;
 
@@ -46,6 +47,7 @@ public sealed class AmbilightEngine : IDisposable
     byte[] _preview = Array.Empty<byte>();
 
     public string DeviceStatus => _device.Status;
+    public bool DeviceHasError => _device.HasError;
     public long FramesSent => _device.FramesSent;
     public long FramesSkipped => _device.FramesSkipped;
     public long Reconnects => _device.Reconnects;
@@ -79,7 +81,7 @@ public sealed class AmbilightEngine : IDisposable
         _capture?.Dispose();
         _capture = NewCapture(_cfg);
         _capture.Start(_monitor);
-        ProbeLog.Log("движок", "метод захвата: " + _cfg.CaptureMode);
+        ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("метод захвата: ", "capture method: ") + _cfg.CaptureMode);
     }
 
     static HybridBackend NewCapture(AmbilightConfig cfg) => new()
@@ -130,7 +132,7 @@ public sealed class AmbilightEngine : IDisposable
 
         if (_monitor == null)
         {
-            ProbeLog.Log("движок", "мониторы не найдены");
+            ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("мониторы не найдены", "no monitors found"));
             return;
         }
 
@@ -155,8 +157,9 @@ public sealed class AmbilightEngine : IDisposable
         _outputThread.Start();
         LayoutVersion++;
 
-        ProbeLog.Log("движок", $"старт: {_monitor.DeviceName} {_monitor.Width}x{_monitor.Height}, " +
-                               $"диодов {_zones.Length}, порт {cfg.PortName}");
+        ProbeLog.Log(Loc.P("движок", "engine"),
+                     Loc.P($"старт: {_monitor.DeviceName} {_monitor.Width}x{_monitor.Height}, диодов {_zones.Length}, порт {cfg.PortName}",
+                           $"start: {_monitor.DeviceName} {_monitor.Width}x{_monitor.Height}, {_zones.Length} LEDs, port {cfg.PortName}"));
     }
 
     void OutputLoop()
@@ -271,7 +274,7 @@ public sealed class AmbilightEngine : IDisposable
         _pauseReason = reason;
         _paused = true;
         _device.Blackout();
-        ProbeLog.Log("движок", "пауза: " + reason);
+        ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("пауза: ", "paused: ") + reason);
     }
 
     public void Resume()
@@ -280,7 +283,7 @@ public sealed class AmbilightEngine : IDisposable
         _paused = false;
         _pauseReason = "";
         _pipeline.Reset(_zones.Length);   // do not fade in from stale colours
-        ProbeLog.Log("движок", "продолжение");
+        ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("продолжение", "resumed"));
     }
 
     public void Stop()
@@ -299,7 +302,7 @@ public sealed class AmbilightEngine : IDisposable
         _capture?.Dispose();
         _capture = null;
 
-        ProbeLog.Log("движок", "стоп");
+        ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("стоп", "stopped"));
     }
 
     public void Dispose() => Stop();

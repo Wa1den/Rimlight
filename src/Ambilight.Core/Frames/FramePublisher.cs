@@ -3,6 +3,7 @@ using System.IO.MemoryMappedFiles;
 using System.Text;
 using System.Threading;
 using Ambilight.Capture;
+using Ambilight.Text;
 
 namespace Ambilight.Frames;
 
@@ -23,7 +24,7 @@ public sealed unsafe class FramePublisher : IDisposable
     public bool IsOpen => _ptr != null;
     public long Published { get; private set; }
     public long Dropped { get; private set; }
-    public string Status { get; private set; } = "выключено";
+    public string Status { get; private set; } = Loc.P("выключено", "off");
 
     /// <summary>
     /// Safe to call every tick - the output loop follows the setting live. A failure is
@@ -48,8 +49,8 @@ public sealed unsafe class FramePublisher : IDisposable
         }
         catch (Exception ex)
         {
-            Status = "не удалось открыть: " + ex.Message;
-            ProbeLog.Log("шина кадров", Status);
+            Status = Loc.P("не удалось открыть: ", "could not open: ") + ex.Message;
+            ProbeLog.Log(Loc.P("шина кадров", "frame bus"), Status);
             Close();
             return false;
         }
@@ -64,8 +65,10 @@ public sealed unsafe class FramePublisher : IDisposable
         *(int*)(_ptr + FrameBus.OffSlotBytes) = FrameBus.SlotBytes;
         *(int*)(_ptr + FrameBus.OffPid) = Environment.ProcessId;
 
-        Status = "открыта";
-        ProbeLog.Log("шина кадров", $"{FrameBus.MapName} открыта, слот {FrameBus.SlotBytes / 1024} КБ");
+        Status = Loc.P("открыта", "open");
+        ProbeLog.Log(Loc.P("шина кадров", "frame bus"),
+                     Loc.P($"{FrameBus.MapName} открыта, слот {FrameBus.SlotBytes / 1024} КБ",
+                           $"{FrameBus.MapName} open, slot {FrameBus.SlotBytes / 1024} KB"));
         return true;
     }
 
@@ -80,7 +83,9 @@ public sealed unsafe class FramePublisher : IDisposable
             // Only worth a log line when it changes: a wrong-sized frame every tick would
             // otherwise fill the log faster than anything else in it.
             if (Dropped++ == 0)
-                ProbeLog.Log("шина кадров", $"кадр {width}x{height} ({bytes} Б) не влез в слот, пропущен");
+                ProbeLog.Log(Loc.P("шина кадров", "frame bus"),
+                             Loc.P($"кадр {width}x{height} ({bytes} Б) не влез в слот, пропущен",
+                                   $"frame {width}x{height} ({bytes} B) did not fit the slot, dropped"));
             return;
         }
 
@@ -144,7 +149,7 @@ public sealed unsafe class FramePublisher : IDisposable
         _view = null;
         _mmf?.Dispose();
         _mmf = null;
-        Status = "выключено";
+        Status = Loc.P("выключено", "off");
     }
 
     public void Dispose() => Close();

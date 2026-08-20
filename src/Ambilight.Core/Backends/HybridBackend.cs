@@ -1,6 +1,8 @@
 using System;
 using System.Threading;
 
+using Ambilight.Text;
+
 namespace Ambilight.Capture.Backends;
 
 /// <summary>
@@ -346,7 +348,7 @@ public sealed class HybridBackend : CaptureBackendBase
         Source.Dda => "DDA",
         Source.Wgc => "WGC",
         Source.Gdi => "GDI",
-        _ => "нет"
+        _ => Loc.P("нет", "none")
     };
 
     public string SourceSplit()
@@ -355,7 +357,8 @@ public sealed class HybridBackend : CaptureBackendBase
         return $"DDA {_ddaMs * 100 / total:F0}% " +
                $"WGC {_wgcMs * 100 / total:F0}% " +
                $"GDI {_gdiMs * 100 / total:F0}% " +
-               $"без источника {_deadMs * 100 / total:F0}%; переключений {Switches}";
+               Loc.P("без источника ", "no source ") + $"{_deadMs * 100 / total:F0}%; " +
+               Loc.P("переключений ", "switches ") + Switches;
     }
 
     public override string SummaryLine() => base.SummaryLine() + " | источники: " + SourceSplit();

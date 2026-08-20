@@ -118,6 +118,9 @@ public sealed class AmbilightConfig
     public bool PublishFrames { get; set; }
 
     public bool MinimizeToTray { get; set; } = true;
+
+    /// <summary>Open straight into the tray - useful together with autostart.</summary>
+    public bool StartMinimized { get; set; }
     public bool Autostart { get; set; }
     public bool WriteLog { get; set; } = true;
     public string Language { get; set; } = "ru";

@@ -5,12 +5,21 @@ using System.Windows.Interop;
 using Microsoft.Win32;
 using Ambilight.Capture;
 
-namespace Ambilight;
+namespace Ambilight.Power;
+
+/// <summary>Whether anybody could see the lights right now.</summary>
+public readonly record struct PowerState(bool DisplayOff, bool Locked, bool Suspended)
+{
+    public bool AnythingHidden => DisplayOff || Locked || Suspended;
+}
 
 /// <summary>
-/// Turns the strip off when nobody can see it: screen blanked, session locked, machine
-/// asleep. Lock and sleep arrive through SystemEvents; display power does not, and needs
-/// an explicit power-setting registration against a window handle.
+/// Reports when nobody can see the lights: screen blanked, session locked, machine asleep.
+///
+/// Only reports - what to do about it is the caller's decision, since one consumer drives a
+/// strip over a serial port and another drives a case through a separate server. Lock and
+/// sleep arrive through SystemEvents; display power does not, and needs an explicit power
+/// setting registration against a window handle.
 /// </summary>
 public sealed class PowerWatcher : IDisposable
 {
@@ -34,22 +43,30 @@ public sealed class PowerWatcher : IDisposable
         public byte Data;
     }
 
-    readonly AmbilightEngine _engine;
-    readonly Func<AmbilightConfig> _config;
     HwndSource? _source;
     IntPtr _registration = IntPtr.Zero;
 
     bool _displayOff, _locked, _suspended;
 
-    public PowerWatcher(AmbilightEngine engine, Func<AmbilightConfig> config)
-    {
-        _engine = engine;
-        _config = config;
+    /// <summary>Raised whenever any of the three conditions changes.</summary>
+    public event EventHandler<PowerState>? Changed;
 
+    /// <summary>
+    /// Ticks up on every wake. Hardware that was re-enumerated during sleep is not ready
+    /// the instant Windows says "resumed" - OpenRGB was seen dying 41 seconds after a wake
+    /// - so a consumer can use this to hold off rather than hammer a half-initialised bus.
+    /// </summary>
+    public long LastResumeTicks { get; private set; }
+
+    public PowerState State => new(_displayOff, _locked, _suspended);
+
+    public PowerWatcher()
+    {
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
 
+    /// <summary>Display power only reaches a window, so one has to be handed over.</summary>
     public void Attach(Window window)
     {
         var helper = new WindowInteropHelper(window);
@@ -71,7 +88,7 @@ public sealed class PowerWatcher : IDisposable
                 // 0 = off, 1 = on, 2 = dimmed
                 _displayOff = setting.Data == 0;
                 ProbeLog.Log("питание", _displayOff ? "экран выключен" : "экран включён");
-                Apply();
+                Raise();
             }
         }
         return IntPtr.Zero;
@@ -86,32 +103,27 @@ public sealed class PowerWatcher : IDisposable
         else return;
 
         ProbeLog.Log("питание", _locked ? "сессия заблокирована" : "сессия разблокирована");
-        Apply();
+        Raise();
     }
 
     void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
-        if (e.Mode == PowerModes.Suspend) _suspended = true;
-        else if (e.Mode == PowerModes.Resume) _suspended = false;
+        if (e.Mode == PowerModes.Suspend)
+        {
+            _suspended = true;
+        }
+        else if (e.Mode == PowerModes.Resume)
+        {
+            _suspended = false;
+            LastResumeTicks = Environment.TickCount64;
+        }
         else return;
 
         ProbeLog.Log("питание", _suspended ? "уход в сон" : "пробуждение");
-        Apply();
+        Raise();
     }
 
-    void Apply()
-    {
-        var cfg = _config();
-
-        string? reason =
-            _suspended && cfg.OffOnSuspend ? "сон" :
-            _locked && cfg.OffOnLock ? "блокировка" :
-            _displayOff && cfg.OffOnDisplayOff ? "экран выключен" :
-            null;
-
-        if (reason != null) _engine.Pause(reason);
-        else _engine.Resume();
-    }
+    void Raise() => Changed?.Invoke(this, State);
 
     public void Dispose()
     {

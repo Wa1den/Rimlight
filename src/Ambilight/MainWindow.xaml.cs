@@ -9,6 +9,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Ambilight.Capture;
 using Ambilight.Leds;
+using Ambilight.Power;
 
 namespace Ambilight;
 
@@ -59,7 +60,20 @@ public partial class MainWindow : Window
         Icon = LoadIcon();
         _saved = _cfg.Clone();
 
-        _power = new PowerWatcher(_engine, () => _cfg);
+        // The watcher only reports; deciding what counts as "nobody is looking" stays here,
+        // because it is this application's settings that say so.
+        _power = new PowerWatcher();
+        _power.Changed += (_, state) =>
+        {
+            string? reason =
+                state.Suspended && _cfg.OffOnSuspend ? "сон" :
+                state.Locked && _cfg.OffOnLock ? "блокировка" :
+                state.DisplayOff && _cfg.OffOnDisplayOff ? "экран выключен" :
+                null;
+
+            if (reason != null) _engine.Pause(reason);
+            else _engine.Resume();
+        };
 
         RestoreWindowGeometry();
         BuildSettings();

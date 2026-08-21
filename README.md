@@ -1,43 +1,45 @@
 # Rimlight
 
-Фоновая подсветка монитора по картинке с экрана, для Windows. Края кадра усредняются по
-зонам и уходят на адресную ленту через COM-порт по протоколу Adalight — тому самому, на
-котором уже работают распространённые прошивки для Arduino.
+Фоновая подсветка монитора для Windows. Программа захватывает изображение экрана,
+усредняет цвет по зонам вдоль краёв и отправляет результат на адресную светодиодную ленту
+через COM-порт по протоколу Adalight. Этот протокол поддерживают распространённые прошивки
+для Arduino.
 
 *[English version below](#rimlight-english)*
 
-Железная часть и сама задумка — из проекта AlexGyver
-[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Здесь заменена только
-половина, живущая на компьютере; с прошивкой приложение говорит без изменений.
+Железная часть и сама идея взяты из проекта AlexGyver
+[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight заменяет
+только программу на компьютере и работает с той же прошивкой без изменений.
 
-Написано на замену [Prismatik](https://github.com/psieg/Lightpack), который регулярно гас
-в играх. Самым интересным в проекте оказалось выяснить, **почему** он гас, и из этого
-выросла большая часть архитектуры.
+Проект написан на замену [Prismatik](https://github.com/psieg/Lightpack), у которого в
+играх регулярно гасла подсветка. Разбор причин этого определил основную часть архитектуры.
 
-## Чем отличается
+## Отличия от Prismatik
 
-**Захват не встаёт молча.** Prismatik выбирает один метод и замирает, когда тот перестаёт
-отдавать кадры. Rimlight держит основным Desktop Duplication, а при его молчании переходит
-на Windows Graphics Capture и дальше на GDI — так лента продолжает следовать за экраном,
-вместо того чтобы замереть и через десять секунд погаснуть.
+**Резервные методы захвата.** Prismatik использует один метод захвата и перестаёт
+обновлять подсветку, когда тот прекращает выдавать кадры. Rimlight по умолчанию работает
+через Desktop Duplication, а при отсутствии кадров переключается на Windows Graphics
+Capture и затем на GDI, поэтому подсветка продолжает обновляться.
 
-**Простой — не голодание.** Неподвижный экран честно не производит кадров. Отличить это от
-действительно сломанного пути захвата — основная работа логики переключения; ошибка здесь
-приводит к метаниям между источниками и к дёрганью курсора мыши.
+**Различение простоя и сбоя.** Неподвижный экран не производит новых кадров, и это
+нормальная ситуация. Основная задача логики переключения — отличать её от действительно
+неработающего метода захвата: ошибка приводит к лишним сменам источника и заметна по
+подёргиванию курсора мыши.
 
-**Работа с кадром остаётся на видеокарте.** Кадр уменьшается аппаратными мипами, а
-результат читается неблокирующим кольцом буферов: по шине едет около 4 КБ вместо 20 МБ.
-Блокирующее чтение встаёт в очередь за работой игры и стоит секунд под нагрузкой.
+**Обработка кадра на видеокарте.** Кадр уменьшается аппаратной генерацией мип-уровней, а
+результат читается через кольцо промежуточных буферов без блокировки: по шине передаётся
+около 4 КБ на кадр вместо 20 МБ. Блокирующее чтение ждёт в очереди за работой игры и под
+нагрузкой занимает секунды.
 
-**Цвет считается в линейном свете.** Усреднение, баланс белого, насыщенность и сглаживание
-идут по линейным значениям, и только в конце кодируются гаммой — поэтому яркие сцены не
-тускнеют неожиданным образом.
+**Расчёт цвета в линейном пространстве.** Усреднение, баланс белого, насыщенность и
+сглаживание выполняются над линейными значениями, гамма-коррекция применяется в конце.
+Без этого яркие сцены выглядят тусклее, чем должны.
 
 ## Что нужно
 
 - Windows 10 2004 или новее (лучше Windows 11)
 - [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
-- Контроллер ленты на COM-порту с прошивкой, понимающей Adalight — например Arduino с
+- Контроллер ленты на COM-порту с прошивкой, поддерживающей Adalight — например Arduino с
   [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Прошивка в этот
   репозиторий не входит.
 
@@ -48,8 +50,8 @@
 далее N x (R, G, B)
 ```
 
-На 1 Мбод кадр из 122 диодов занимает 372 байта, то есть потолок около 268 к/с — запас
-многократный.
+На скорости 1 Мбод кадр для 122 диодов занимает 372 байта, что даёт максимум около
+268 кадров в секунду — значительно больше, чем выдаёт захват.
 
 ## Сборка
 
@@ -63,44 +65,44 @@ dotnet build src/Rimlight/Rimlight.csproj -c Release
 dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist
 ```
 
-Для машины без установленного рантайма — добавить `--self-contained true`.
+Для машины без установленного рантайма .NET добавить `--self-contained true`.
 
 ## Настройка
 
 1. **Устройство** — выбрать монитор и COM-порт, нажать «Применить и переподключиться».
-2. **Раскладка** — задать число диодов по сторонам, стартовый угол и направление. Дальше
-   удобнее всего кнопкой **«Показать схему на экране»**: она рисует зоны выборки поверх
-   реального экрана с номерами, а клик по ячейке зажигает её зелёным. Схема попадает в
-   захват как любая другая картинка, поэтому позеленевший диод подтверждает **всю** цепочку
-   — геометрию, нумерацию и цвет, а не только нумерацию.
-3. Точная подгонка — ползунком **«Смещение»**. Одним стартовым углом положение первого
-   диода не выражается: при движении вверх он окажется на боковой стороне, при движении в
-   бок — на нижней.
-4. **Цвет** — температура и усиления по каналам подгоняются под цвет стены за монитором;
-   насыщенность, гамма и порог темноты — на вкус.
+2. **Раскладка** — задать число диодов по сторонам, стартовый угол и направление. Кнопка
+   **«Показать схему на экране»** накладывает пронумерованные зоны выборки поверх экрана;
+   клик по ячейке подсвечивает её зелёным. Схема попадает в захват как обычное
+   изображение, поэтому зелёный диод на ленте подтверждает сразу геометрию, нумерацию и
+   цветопередачу.
+3. Точная подгонка выполняется ползунком **«Смещение»**: стартовый угол сам по себе не
+   определяет положение первого диода — оно зависит ещё и от того, по какой стороне лента
+   уходит из угла.
+4. **Цвет** — температура и усиления по каналам подбираются под цвет стены за монитором;
+   насыщенность, гамма и порог темноты настраиваются по вкусу.
 
-Сумма диодов обязана совпадать с `NUM_LEDS` в прошивке: стоковые скетчи Adalight читают
-фиксированное число байт независимо от заголовка, поэтому при расхождении картинка поедет
-по кругу.
+Суммарное число диодов должно совпадать с `NUM_LEDS` в прошивке: стоковые скетчи Adalight
+читают фиксированное число байт независимо от заголовка, поэтому при расхождении
+изображение смещается вдоль ленты.
 
-Настройки, лог и переводы лежат в `%APPDATA%\Rimlight\`. Переводы — обычный JSON, их можно
-править и дополнять.
+Настройки, лог и файлы переводов хранятся в `%APPDATA%\Rimlight\`. Переводы — обычные
+JSON-файлы, их можно править и дополнять.
 
-## Если захват встаёт в играх
+## Проблемы захвата в играх
 
-Первым делом проверить **«Планирование графического процессора с аппаратным ускорением»**:
-Параметры → Система → Дисплей → Графика → Настройки графики по умолчанию.
+В первую очередь проверить настройку **«Планирование графического процессора с аппаратным
+ускорением»**: Параметры → Система → Дисплей → Графика → Настройки графики по умолчанию.
 
-Когда оно включено, тяжёлая игра способна загрузить видеокарту настолько, что композитор
-Windows перестаёт успевать. Desktop Duplication и Windows Graphics Capture читают именно
-результат композиции, поэтому голодают: длинные провалы, переходы на GDI, иногда полное
-отсутствие кадров. На машине, где всё это разрабатывалось (RTX 4080, 3440×1440 @ 165 Гц),
-выключение решило проблему полностью — видеокарта держится на 97–98% без всякого лимита
-кадров, а захват при этом стабилен.
+Когда она включена, требовательная игра может загрузить видеокарту настолько, что
+композитор Windows перестаёт успевать. Desktop Duplication и Windows Graphics Capture
+читают результат композиции, поэтому остаются без кадров: появляются длинные паузы,
+переходы на GDI, иногда кадры пропадают полностью. На машине, где велась разработка
+(RTX 4080, 3440×1440, 165 Гц), отключение настройки устранило проблему: видеокарта
+загружена на 97–98% без ограничения частоты кадров, захват при этом стабилен.
 
-Оговорка: генерация кадров DLSS требует этой настройки включённой, так что размен не
-бесплатный. Ограничение частоты кадров в игре чуть ниже того, что видеокарта тянет, даёт
-тот же эффект и обходится дешевле.
+Генерация кадров DLSS работает только при включённой настройке. В этом случае вместо её
+отключения можно ограничить частоту кадров в игре чуть ниже возможностей видеокарты —
+эффект тот же.
 
 ## Структура репозитория
 
@@ -110,30 +112,29 @@ src/Rimlight.Core   бэкенды захвата, конвейер цвета, 
 tools/CaptureProbe  диагностика: все методы захвата рядом, с замерами
 ```
 
-`tools/CaptureProbe` гоняет все бэкенды одновременно по одному монитору и показывает
-частоту, перцентили интервала, стоимость кадра по стадиям и посекундную ленту истории. Он
-появился потому, что замер каждый раз побеждал догадку; его README хранит найденное.
+`tools/CaptureProbe` запускает все бэкенды захвата одновременно на одном мониторе и
+показывает частоту кадров, перцентили интервалов, стоимость кадра по стадиям и
+посекундную историю. Результаты измерений собраны в его README.
 
 ## Шина кадров
 
-При включённой опции «Отдавать кадры» уменьшенные кадры выкладываются в разделяемую память,
-чтобы второй процесс мог питать другую подсветку от того же захвата, не открывая свой.
-Раскладка описана в `src/Rimlight.Core/Frames/FrameBus.cs`.
+Если включена опция «Отдавать кадры», уменьшенные кадры публикуются в разделяемую память:
+второй процесс может использовать тот же захват для другой подсветки, не открывая
+собственный. Формат описан в `src/Rimlight.Core/Frames/FrameBus.cs`.
 
-Имя разделяемой памяти намеренно осталось `Local\AmbilightFrameBus`: это контракт с уже
-существующим потребителем, и переименование ради косметики сломало бы его молча.
+Имя разделяемой памяти оставлено прежним — `Local\AmbilightFrameBus`. Его использует
+существующий потребитель, и переименование нарушило бы совместимость.
 
 ## Благодарности
 
-- [AlexGyver / Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight) — сборка
-  железа, прошивка, с которой всё это говорит, и сама идея.
-- [psieg / Lightpack (Prismatik)](https://github.com/psieg/Lightpack) — предшественник.
-  Чтение его кода захвата помогло понять часть здешних проблем, включая те, которых у него
-  как раз не оказалось.
+- [AlexGyver / Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight) —
+  конструкция железа, прошивка и сама идея.
+- [psieg / Lightpack (Prismatik)](https://github.com/psieg/Lightpack) — предшественник;
+  его код захвата помог разобраться в части описанных здесь проблем.
 - [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows) — привязки Direct3D 11
   и DXGI для .NET.
-- [Spout2](https://github.com/leadedge/Spout2) — обмен текстурами, используется одним из
-  экспериментальных бэкендов в пробнике.
+- [Spout2](https://github.com/leadedge/Spout2) — обмен текстурами; используется одним из
+  экспериментальных бэкендов в CaptureProbe.
 
 ## Лицензия
 
@@ -145,36 +146,39 @@ MIT — см. [LICENSE](LICENSE).
 
 # Rimlight (English)
 
-Screen-driven ambient lighting for Windows: it samples the edges of a monitor and drives an
-addressable LED strip over a serial link, using the Adalight protocol that existing Arduino
-firmware already speaks.
+Screen-driven ambient lighting for Windows. The program captures the screen, averages
+colours over zones along the edges and sends the result to an addressable LED strip over a
+serial port using the Adalight protocol. The protocol is supported by common Arduino
+firmware.
 
 The hardware side and the original idea come from AlexGyver's
-[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight) — this project replaces
-only the PC half of that setup, and talks to the same firmware unchanged.
+[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight replaces only
+the PC program and works with the same firmware unchanged.
 
-It was written to replace [Prismatik](https://github.com/psieg/Lightpack), which kept going
-dark during games. The interesting part turned out to be *why* that happens, and most of the
-design follows from it.
+The project was written to replace [Prismatik](https://github.com/psieg/Lightpack), which
+regularly went dark during games. Working out the causes of that shaped most of the
+architecture.
 
-## What makes it different
+## Differences from Prismatik
 
-**Capture never silently stops.** Prismatik picks one capture method and freezes when it
-stops delivering. Rimlight runs Desktop Duplication as the primary path and falls back to
-Windows Graphics Capture, then to GDI, whenever the fast paths go quiet — so the strip keeps
-following the screen instead of freezing and then blanking.
+**Fallback capture methods.** Prismatik uses a single capture method and stops updating the
+lights when it stops delivering frames. Rimlight uses Desktop Duplication by default and,
+when frames stop arriving, switches to Windows Graphics Capture and then to GDI, so the
+lighting keeps updating.
 
-**Idle is not starvation.** A still screen legitimately produces no frames. Telling that
-apart from a genuinely stalled capture path is most of what the fallback logic does; getting
-it wrong makes the source flap and the mouse cursor stutter.
+**Telling idle from failure.** A still screen produces no new frames, which is normal. The
+main job of the switching logic is to distinguish that from a capture method that has
+actually stopped working: getting it wrong causes unnecessary source switches, visible as
+mouse cursor stutter.
 
-**The GPU work stays on the GPU.** Frames are reduced through hardware mip generation and
-read back non-blocking through a ring of staging buffers — roughly 4 KB per frame crosses
-the bus instead of a 20 MB frame. A blocking readback stalls behind the game's own GPU work
-and costs seconds under load.
+**Frame processing on the GPU.** The frame is downscaled with hardware mip generation and
+the result is read back through a ring of staging buffers without blocking: about 4 KB per
+frame crosses the bus instead of 20 MB. A blocking readback waits in line behind the game's
+GPU work and takes seconds under load.
 
-**Colour maths happens in linear light.** Sampling, white balance, saturation and blending
-are done on linear values and only encoded at the end, so bright scenes do not dim oddly.
+**Colour maths in linear space.** Averaging, white balance, saturation and smoothing are
+done on linear values; gamma encoding is applied at the end. Without this, bright scenes
+look dimmer than they should.
 
 ## Requirements
 
@@ -191,8 +195,8 @@ The frame format on the wire is stock Adalight:
 then N x (R, G, B)
 ```
 
-At 1 Mbaud a 122-LED frame is 372 bytes, so the link tops out around 268 fps — far more
-headroom than capture will ever need.
+At 1 Mbaud a 122-LED frame takes 372 bytes, which allows up to about 268 frames per
+second — considerably more than capture produces.
 
 ## Building
 
@@ -208,39 +212,40 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 
 Add `--self-contained true` for a machine without the .NET runtime installed.
 
-## Setting it up
+## Setup
 
 1. **Device** — pick the monitor and the serial port, press *Apply and reconnect*.
-2. **Layout** — enter the LED count per side, then the start corner and direction. Use
-   *Show map on screen*: it draws the sampling zones over the real screen with numbers, and
-   clicking a cell lights it green. Because the map is captured like anything else, a green
-   LED confirms the whole chain — geometry, numbering and colour — not just the numbering.
-3. Fine-tune with **Offset**, which shifts the mapping along the strip. A start corner alone
-   cannot say where the first LED physically sits.
-4. **Colour** — temperature and the per-channel gains match the wall behind the monitor;
-   saturation, gamma and the darkness threshold are taste.
+2. **Layout** — enter the LED count per side, the start corner and the direction. The
+   *Show map on screen* button overlays numbered sampling zones on the screen; clicking a
+   cell highlights it in green. The map is captured like any other image, so a green LED on
+   the strip confirms the geometry, the numbering and the colour path at once.
+3. Fine-tuning is done with the **Offset** slider: the start corner alone does not
+   determine the position of the first LED — it also depends on which side the strip leaves
+   the corner on.
+4. **Colour** — temperature and the per-channel gains are matched to the wall behind the
+   monitor; saturation, gamma and the darkness threshold are set to preference.
 
-The LED total must match `NUM_LEDS` in the firmware. Stock Adalight sketches read a fixed
-number of bytes regardless of the header, so a mismatch rotates the picture around the strip.
+The LED total must match `NUM_LEDS` in the firmware: stock Adalight sketches read a fixed
+number of bytes regardless of the header, so a mismatch shifts the picture along the strip.
 
-Settings, log and translations live in `%APPDATA%\Rimlight\`. Translations are plain JSON
-and can be edited or extended.
+Settings, the log and translation files are stored in `%APPDATA%\Rimlight\`. Translations
+are plain JSON files and can be edited or added.
 
-## If capture stalls in games
+## Capture problems in games
 
 Check **Hardware-accelerated GPU scheduling** first: Settings → System → Display → Graphics
 → Default graphics settings.
 
-With it enabled, a demanding game can saturate the GPU to the point where the Windows
-compositor cannot keep up. Desktop Duplication and Windows Graphics Capture both read the
-composition result, so they starve — long stalls, fallbacks to GDI, sometimes no frames at
-all. Turning it off resolved this completely on the machine this was developed against
-(RTX 4080, 3440×1440 @ 165 Hz): the GPU sits at 97–98% with no frame cap and capture stays
-steady.
+With it enabled, a demanding game can load the GPU to the point where the Windows
+compositor cannot keep up. Desktop Duplication and Windows Graphics Capture read the
+composition result, so they receive no frames: long gaps, fallbacks to GDI, sometimes no
+frames at all. On the development machine (RTX 4080, 3440×1440, 165 Hz), disabling the
+setting fixed the problem: the GPU runs at 97–98% with no frame cap and capture stays
+stable.
 
-Note that DLSS Frame Generation requires that setting enabled, so the trade is not free.
-Capping the game's frame rate slightly below what the GPU can deliver has the same effect
-and costs less.
+DLSS Frame Generation only works with the setting enabled. In that case, instead of
+disabling it, cap the game's frame rate slightly below what the GPU can deliver — the
+effect is the same.
 
 ## Repository layout
 
@@ -250,30 +255,29 @@ src/Rimlight.Core   capture backends, colour pipeline, frame bus, localisation
 tools/CaptureProbe  diagnostic tool: every capture method side by side, with metrics
 ```
 
-`tools/CaptureProbe` runs all capture backends at once against one monitor and reports
-frame rate, interval percentiles, per-frame cost and a second-by-second history strip. It
-exists because measuring beat guessing every single time; its README records the findings.
+`tools/CaptureProbe` runs all capture backends at once on a single monitor and reports
+frame rate, interval percentiles, per-stage frame cost and a second-by-second history. The
+measurement results are collected in its README.
 
 ## Frame bus
 
-With *Publish frames* enabled the reduced frames are exposed through shared memory, so a
-second process can drive other lighting from the same capture without opening its own.
-The layout is documented in `src/Rimlight.Core/Frames/FrameBus.cs`.
+With the *Publish frames* option enabled, the reduced frames are published to shared
+memory: a second process can drive other lighting from the same capture without opening its
+own. The format is described in `src/Rimlight.Core/Frames/FrameBus.cs`.
 
-The shared-memory name is deliberately still `Local\AmbilightFrameBus`: it is a contract
-with an existing consumer, and renaming it for cosmetic reasons would break that silently.
+The shared-memory name is kept as `Local\AmbilightFrameBus`. An existing consumer uses it,
+and renaming it would break compatibility.
 
 ## Credits
 
 - [AlexGyver / Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight) — the
-  hardware build, the firmware this talks to, and the idea in the first place.
-- [psieg / Lightpack (Prismatik)](https://github.com/psieg/Lightpack) — the predecessor.
-  Reading its capture code was how several of the problems here were understood, including
-  the ones it turned out not to have.
+  hardware build, the firmware and the original idea.
+- [psieg / Lightpack (Prismatik)](https://github.com/psieg/Lightpack) — the predecessor;
+  its capture code helped in understanding some of the problems described here.
 - [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows) — Direct3D 11 and DXGI
   bindings for .NET.
-- [Spout2](https://github.com/leadedge/Spout2) — texture sharing, used by one of the
-  experimental capture backends in the probe.
+- [Spout2](https://github.com/leadedge/Spout2) — texture sharing; used by one of the
+  experimental capture backends in CaptureProbe.
 
 ## Licence
 

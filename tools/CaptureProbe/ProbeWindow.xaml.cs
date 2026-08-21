@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
-using Ambilight.Capture;
-using Ambilight.Capture.Backends;
+using Rimlight.Capture;
+using Rimlight.Capture.Backends;
 
 namespace CaptureProbe;
 

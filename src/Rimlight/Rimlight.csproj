@@ -5,17 +5,22 @@
     <TargetFramework>net9.0-windows10.0.22621.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <RootNamespace>CaptureProbe</RootNamespace>
+    <RootNamespace>Rimlight</RootNamespace>
+    <AssemblyName>Rimlight</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Rimlight.Core\Rimlight.Core.csproj" />
+    <Resource Include="icon.ico" />
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+    <ProjectReference Include="..\Rimlight.Core\Rimlight.Core.csproj" />
   </ItemGroup>
 
 </Project>

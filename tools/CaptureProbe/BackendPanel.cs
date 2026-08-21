@@ -3,8 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Ambilight.Capture;
-using Ambilight.Capture.Backends;
+using Rimlight.Capture;
+using Rimlight.Capture.Backends;
 
 namespace CaptureProbe;
 

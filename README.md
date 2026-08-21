@@ -7,6 +7,8 @@
 
 *[English version below](#rimlight-english)*
 
+![Окно Rimlight: слева настройки, справа превью зон с номерами по краям и строка состояния с замерами захвата](pics/interface.jpg)
+
 Железная часть и сама идея взяты из проекта AlexGyver
 [Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight заменяет
 только программу на компьютере и работает с той же прошивкой без изменений.
@@ -81,6 +83,11 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 4. **Цвет** — температура и усиления по каналам подбираются под цвет стены за монитором;
    насыщенность, гамма и порог темноты настраиваются по вкусу.
 
+Для проверки на настоящем кадре в `pics/Rainbow.jpg` лежит изображение с насыщенными
+цветами во всех частях кадра. Установленное фоном рабочего стола, оно показывает
+раскладку целиком: каждый участок ленты должен повторять цвет ближайшего к нему края
+экрана.
+
 Суммарное число диодов должно совпадать с `NUM_LEDS` в прошивке: стоковые скетчи Adalight
 читают фиксированное число байт независимо от заголовка, поэтому при расхождении
 изображение смещается вдоль ленты.
@@ -150,6 +157,8 @@ Screen-driven ambient lighting for Windows. The program captures the screen, ave
 colours over zones along the edges and sends the result to an addressable LED strip over a
 serial port using the Adalight protocol. The protocol is supported by common Arduino
 firmware.
+
+![The Rimlight window: settings on the left, the zone preview with numbered cells along the edges and a status area with capture metrics on the right](pics/interface.jpg)
 
 The hardware side and the original idea come from AlexGyver's
 [Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight replaces only
@@ -224,6 +233,10 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
    the corner on.
 4. **Colour** — temperature and the per-channel gains are matched to the wall behind the
    monitor; saturation, gamma and the darkness threshold are set to preference.
+
+For a check against a real frame, `pics/Rainbow.jpg` is an image with saturated colours
+in every part of the frame. Set as the desktop background, it shows the whole layout at
+once: every part of the strip should repeat the colour of the screen edge nearest to it.
 
 The LED total must match `NUM_LEDS` in the firmware: stock Adalight sketches read a fixed
 number of bytes regardless of the header, so a mismatch shifts the picture along the strip.

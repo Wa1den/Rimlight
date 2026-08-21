@@ -465,6 +465,11 @@ public partial class MainWindow : Window
 
             panel.Children.Add(Note(Loc.T("about.text")));
             panel.Children.Add(Note(Loc.T("about.text2")));
+
+            panel.Children.Add(LinkLine(Loc.T("about.repo"),
+                "https://github.com/Wa1den/Rimlight"));
+            panel.Children.Add(LinkLine(Loc.T("about.firmware"),
+                "https://github.com/AlexGyver/Arduino_Ambilight"));
         });
 
         _rebuildingUi = false;
@@ -571,6 +576,38 @@ public partial class MainWindow : Window
     }
 
     // ---- import / export ----------------------------------------------------
+
+    /// <summary>A caption followed by a clickable address.</summary>
+    TextBlock LinkLine(string caption, string url)
+    {
+        var t = Text("", dim: true, size: 11);
+        t.Margin = new Thickness(0, 6, 0, 0);
+        t.Inlines.Add(caption + " ");
+
+        var link = new System.Windows.Documents.Hyperlink(
+            new System.Windows.Documents.Run(url)) { Foreground = Res("Fg") };
+        link.Click += (_, _) => OpenUrl(url);
+        t.Inlines.Add(link);
+        return t;
+    }
+
+    static void OpenUrl(string url)
+    {
+        try
+        {
+            // UseShellExecute hands it to the default browser; without it .NET tries to
+            // execute the address as a program
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ProbeLog.Log("ссылка", "не удалось открыть " + url + ": " + ex.Message);
+        }
+    }
 
     static void OpenSettingsFolder()
     {

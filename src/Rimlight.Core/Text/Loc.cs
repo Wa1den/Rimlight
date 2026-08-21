@@ -18,7 +18,7 @@ public static class Loc
     /// the built-ins so translations can be corrected - but that also meant an old file
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it.
     /// </summary>
-    const string Version = "4";
+    const string Version = "5";
 
     public static string Language { get; private set; } = "ru";
 
@@ -143,8 +143,10 @@ public static class Loc
         ["main.boost.note"] = "Поднимает яркость только на экране. Светодиод при значении 30 хорошо виден в тёмной комнате, а монитор рисует его почти чёрным.",
         ["main.startmin"] = "Запускать свёрнутым в трей",
         ["about.head"] = "Rimlight",
-        ["about.text"] = "Фоновая подсветка монитора по картинке с экрана.",
-        ["about.text2"] = "Кадрами может делиться с модулем подсветки корпуса.",
+        ["about.text"] = "Фоновая подсветка монитора по картинке с экрана: края кадра усредняются по зонам и уходят на адресную ленту через COM-порт по протоколу Adalight.",
+        ["about.text2"] = "Захват идёт лестницей — Desktop Duplication, Windows Graphics Capture, GDI — и переключается сам, когда быстрый путь перестаёт отдавать кадры, чтобы подсветка не замирала. Кадрами может делиться с модулем подсветки корпуса.",
+        ["about.repo"] = "Репозиторий проекта:",
+        ["about.firmware"] = "Прошивка контроллера и исходная задумка:",
         ["main.tray"] = "Сворачивать в трей",
         ["main.autostart"] = "Запускать вместе с Windows",
         ["main.log"] = "Писать лог",
@@ -254,8 +256,10 @@ public static class Loc
         ["main.boost.note"] = "Affects the on-screen preview only. A value of 30 is clearly visible on an LED in a dim room, while a monitor renders it almost black.",
         ["main.startmin"] = "Start minimised to tray",
         ["about.head"] = "Rimlight",
-        ["about.text"] = "Bias lighting for the monitor, driven by what is on screen.",
-        ["about.text2"] = "Can share its frames with the case lighting module.",
+        ["about.text"] = "Bias lighting driven by what is on screen: the edges of each frame are averaged per zone and sent to an addressable strip over a serial port using the Adalight protocol.",
+        ["about.text2"] = "Capture runs as a ladder - Desktop Duplication, Windows Graphics Capture, GDI - switching by itself when a fast path stops delivering, so the light never simply stops. Frames can be shared with the case lighting module.",
+        ["about.repo"] = "Project repository:",
+        ["about.firmware"] = "Controller firmware and the original idea:",
         ["main.tray"] = "Minimise to tray",
         ["main.autostart"] = "Start with Windows",
         ["main.log"] = "Write log",

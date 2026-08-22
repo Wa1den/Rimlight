@@ -122,7 +122,7 @@ public sealed class RimlightConfig
     /// <summary>Open straight into the tray - useful together with autostart.</summary>
     public bool StartMinimized { get; set; }
     public bool Autostart { get; set; }
-    public bool WriteLog { get; set; } = true;
+    public bool WriteLog { get; set; }
     public string Language { get; set; } = "ru";
 
     // window geometry, so it comes back where it was left
@@ -145,7 +145,7 @@ public sealed class RimlightConfig
     public bool ShowPreview { get; set; } = true;
 
     /// <summary>The statistics block under the preview; only visible while the preview is.</summary>
-    public bool ShowStats { get; set; } = true;
+    public bool ShowStats { get; set; }
 
     public bool OffOnExit { get; set; } = true;
     public bool OffOnDisplayOff { get; set; } = true;

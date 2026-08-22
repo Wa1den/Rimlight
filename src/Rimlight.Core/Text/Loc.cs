@@ -18,7 +18,7 @@ public static class Loc
     /// the built-ins so translations can be corrected - but that also meant an old file
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it.
     /// </summary>
-    const string Version = "7";
+    const string Version = "8";
 
     public static string Language { get; private set; } = "ru";
 
@@ -143,6 +143,7 @@ public static class Loc
         ["main.boost.note"] = "Поднимает яркость только на экране. Светодиод при значении 30 хорошо виден в тёмной комнате, а монитор рисует его почти чёрным.",
         ["main.startmin"] = "Запускать свёрнутым в трей",
         ["about.head"] = "Rimlight",
+        ["about.version"] = "Версия {0}",
         ["about.text"] = "Фоновая подсветка монитора по картинке с экрана: края кадра усредняются по зонам и уходят на адресную ленту через COM-порт по протоколу Adalight.",
         ["about.text2"] = "Захват идёт лестницей — Desktop Duplication, Windows Graphics Capture, GDI — и переключается сам, когда быстрый путь перестаёт отдавать кадры, чтобы подсветка не замирала. Кадрами может делиться с модулем подсветки корпуса.",
         ["about.repo"] = "Репозиторий проекта:",
@@ -164,6 +165,7 @@ public static class Loc
         ["device.monitor"] = "Монитор",
         ["device.port"] = "COM-порт",
         ["device.baud"] = "Скорость, бод",
+        ["device.baud.note"] = "Та же скорость должна быть выставлена в параметрах прошивки контроллера, иначе связи не будет.",
         ["device.apply"] = "Применить и переподключиться",
 
         ["layout.top"] = "Сверху",
@@ -180,7 +182,7 @@ public static class Loc
         ["layout.margin"] = "Отступ от углов по горизонтали, % ширины",
         ["layout.marginV"] = "Отступ от углов по вертикали, % ширины",
         ["layout.depth"] = "Глубина зоны, % ширины",
-        ["layout.note"] = "Проценты считаются от ширины экрана и применяются одинаковым числом пикселей на всех сторонах: лента отстоит от края на одно расстояние по кругу.",
+        ["layout.note"] = "Все проценты считаются от ширины экрана, чтобы значения были сопоставимы в пикселях. Отступы по горизонтали и по вертикали задаются независимо.",
         ["layout.total"] = "Всего диодов: {0}",
 
         ["color.brightness"] = "Максимальная яркость",
@@ -194,14 +196,16 @@ public static class Loc
         ["color.dither"] = "Дизеринг",
         ["color.dither.note"] = "Сглаживает ступени на тёмных сценах, перенося ошибку округления на соседний диод.",
         ["color.rise"] = "Сглаживание: подъём",
+        ["color.rise.note"] = "Сглаживание изменений во времени: какую долю пути до нового, более яркого цвета диод проходит за кадр. Меньше значение — плавнее, но подсветка сильнее запаздывает.",
         ["color.fall"] = "Сглаживание: спад",
+        ["color.fall.note"] = "То же при затемнении. Спад обычно ставят медленнее подъёма: свет гаснет мягко, и подсветка не мерцает на тёмных сценах.",
 
         ["capture.method"] = "Метод захвата",
         ["capture.auto"] = "Авто",
         ["capture.dda"] = "Только DDA",
         ["capture.wgc"] = "Только WGC",
         ["capture.gdi"] = "Только GDI (медленный)",
-        ["capture.method.note"] = "Авто использует быстрые методы и подстраховывается медленным, когда они не отдают кадры. Применяется сразу.",
+        ["capture.method.note"] = "Авто использует быстрые методы и подстраховывается медленным, когда они не отдают кадры; применяется сразу. DDA (Desktop Duplication) — самый быстрый захват экрана. WGC (Windows Graphics Capture) — чуть медленнее, но стабильнее в играх и полноэкранных приложениях. GDI — самый медленный, зато работает почти везде.",
         ["capture.fps"] = "Потолок частоты, к/с",
         ["capture.onchange"] = "Слать только при смене цветов",
         ["capture.onchange.note"] = "Прошивка гасит ленту после 10 с молчания, поэтому одинаковый кадр всё равно повторяется раз в 2 с.",
@@ -257,6 +261,7 @@ public static class Loc
         ["main.boost.note"] = "Affects the on-screen preview only. A value of 30 is clearly visible on an LED in a dim room, while a monitor renders it almost black.",
         ["main.startmin"] = "Start minimised to tray",
         ["about.head"] = "Rimlight",
+        ["about.version"] = "Version {0}",
         ["about.text"] = "Bias lighting driven by what is on screen: the edges of each frame are averaged per zone and sent to an addressable strip over a serial port using the Adalight protocol.",
         ["about.text2"] = "Capture runs as a ladder - Desktop Duplication, Windows Graphics Capture, GDI - switching by itself when a fast path stops delivering, so the light never simply stops. Frames can be shared with the case lighting module.",
         ["about.repo"] = "Project repository:",
@@ -278,6 +283,7 @@ public static class Loc
         ["device.monitor"] = "Monitor",
         ["device.port"] = "COM port",
         ["device.baud"] = "Baud rate",
+        ["device.baud.note"] = "The controller firmware must be configured for the same baud rate, or there will be no connection.",
         ["device.apply"] = "Apply and reconnect",
 
         ["layout.top"] = "Top",
@@ -294,7 +300,7 @@ public static class Loc
         ["layout.margin"] = "Corner margin, horizontal, % of width",
         ["layout.marginV"] = "Corner margin, vertical, % of width",
         ["layout.depth"] = "Zone depth, % of width",
-        ["layout.note"] = "Percentages are of screen width and applied as the same pixel count on every side: the strip sits the same distance from the edge all round.",
+        ["layout.note"] = "All percentages are of screen width so the values stay comparable in pixels. Horizontal and vertical margins are set independently.",
         ["layout.total"] = "Total LEDs: {0}",
 
         ["color.brightness"] = "Maximum brightness",
@@ -308,14 +314,16 @@ public static class Loc
         ["color.dither"] = "Dithering",
         ["color.dither.note"] = "Smooths banding in dark scenes by passing the rounding error to the next LED.",
         ["color.rise"] = "Smoothing: rise",
+        ["color.rise.note"] = "Smoothing over time: the share of the way towards a new, brighter colour an LED travels per frame. Lower is smoother but the light lags more.",
         ["color.fall"] = "Smoothing: fall",
+        ["color.fall.note"] = "The same for dimming. Fall is usually slower than rise so the light fades softly and does not flicker on dark scenes.",
 
         ["capture.method"] = "Capture method",
         ["capture.auto"] = "Auto",
         ["capture.dda"] = "DDA only",
         ["capture.wgc"] = "WGC only",
         ["capture.gdi"] = "GDI only (slow)",
-        ["capture.method.note"] = "Auto uses the fast methods and falls back to the slow one whenever they stop delivering frames. Applies immediately.",
+        ["capture.method.note"] = "Auto uses the fast methods and falls back to the slow one whenever they stop delivering frames; applies immediately. DDA (Desktop Duplication) is the fastest screen capture. WGC (Windows Graphics Capture) is slightly slower but steadier in games and fullscreen apps. GDI is the slowest but works almost everywhere.",
         ["capture.fps"] = "Frame rate cap",
         ["capture.onchange"] = "Send only when colours change",
         ["capture.onchange.note"] = "The firmware blanks the strip after 10 s of silence, so an identical frame is still repeated every 2 s.",

@@ -59,7 +59,7 @@
                 <DockPanel>
                     <Button x:Name="CancelButton" DockPanel.Dock="Right" Padding="14,6" Margin="8,0,0,0"/>
                     <Button x:Name="ApplyButton" DockPanel.Dock="Right" Padding="14,6"/>
-                    <TextBlock x:Name="DirtyText" Foreground="{StaticResource Warn}" FontSize="12"
+                    <TextBlock x:Name="DirtyText" Foreground="{StaticResource Warn}" FontSize="14"
                                VerticalAlignment="Center" TextWrapping="Wrap"/>
                 </DockPanel>
             </Border>

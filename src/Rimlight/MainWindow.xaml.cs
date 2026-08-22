@@ -98,10 +98,10 @@ public partial class MainWindow : Window
         for (int i = 0; i < _statLabels.Length; i++)
         {
             StatsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var label = Text("", dim: true);
+            var label = Text("", dim: true, size: 12);
             label.Margin = new Thickness(0, 0, 18, 3);
             Grid.SetRow(label, i);
-            var value = Text("");
+            var value = Text("", size: 12);
             value.Margin = new Thickness(0, 0, 0, 3);
             Grid.SetRow(value, i);
             Grid.SetColumn(value, 1);
@@ -388,9 +388,10 @@ public partial class MainWindow : Window
             row.Children.Add(importBtn);
             panel.Children.Add(row);
 
-            var pathText = Text("", dim: true, size: 11);
+            var pathText = Text("", dim: true);
             var link = new System.Windows.Documents.Hyperlink(
                 new System.Windows.Documents.Run(RimlightConfig.Path));
+            StyleLink(link);
             link.Click += (_, _) => OpenSettingsFolder();
             pathText.Inlines.Add(Loc.T("main.paths").Replace("{0}", "").TrimEnd());
             pathText.Inlines.Add(" ");
@@ -412,7 +413,8 @@ public partial class MainWindow : Window
             foreach (var p in SerialPort.GetPortNames()) _portBox.Items.Add(p);
             panel.Children.Add(Labeled(Loc.T("device.port"), _portBox));
 
-            panel.Children.Add(IntBox(Loc.T("device.baud"), _cfg.BaudRate, v => _cfg.BaudRate = v));
+            panel.Children.Add(IntBox(Loc.T("device.baud"), _cfg.BaudRate, v => _cfg.BaudRate = v,
+                Loc.T("device.baud.note")));
 
             var apply = new Button { Content = Loc.T("device.apply"), Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(8, 5, 8, 5) };
             apply.Click += (_, _) => Restart();
@@ -456,7 +458,7 @@ public partial class MainWindow : Window
                 v => { _cfg.DepthPercent = v; _engine.RequestRelayout(); }, help: Loc.T("layout.note")));
 
             var totalRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
-            _totalText = Text("", size: 13);
+            _totalText = Text("");
             _totalText.FontWeight = FontWeights.Bold;
             totalRow.Children.Add(_totalText);
             var totalHelp = HelpIcon("");
@@ -499,8 +501,10 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("color.dither"), _cfg.Dithering, v => _cfg.Dithering = v,
                 Loc.T("color.dither.note")));
 
-            panel.Children.Add(Slider(Loc.T("color.rise"), _cfg.SmoothingRise, 0.02, 1, 0.01, v => _cfg.SmoothingRise = v));
-            panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01, v => _cfg.SmoothingFall = v));
+            panel.Children.Add(Slider(Loc.T("color.rise"), _cfg.SmoothingRise, 0.02, 1, 0.01, v => _cfg.SmoothingRise = v,
+                help: Loc.T("color.rise.note")));
+            panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01, v => _cfg.SmoothingFall = v,
+                help: Loc.T("color.fall.note")));
         });
 
         AddTab(Loc.T("tab.capture"), "", panel =>
@@ -533,7 +537,7 @@ public partial class MainWindow : Window
 
         AddTab(Loc.T("tab.power"), "", panel =>
         {
-            var head = Text(Loc.T("power.head"), size: 13);
+            var head = Text(Loc.T("power.head"));
             head.FontWeight = FontWeights.Bold;
             head.Margin = new Thickness(0, 0, 0, 6);
             panel.Children.Add(head);
@@ -546,10 +550,16 @@ public partial class MainWindow : Window
 
         AddTab(Loc.T("tab.about"), "", panel =>
         {
-            var head = Text(Loc.T("about.head"), size: 13);
+            var head = Text(Loc.T("about.head"));
             head.FontWeight = FontWeights.Bold;
-            head.Margin = new Thickness(0, 0, 0, 6);
+            head.Margin = new Thickness(0, 0, 0, 2);
             panel.Children.Add(head);
+
+            var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            var verText = Text(string.Format(Loc.T("about.version"),
+                $"{ver?.Major ?? 1}.{ver?.Minor ?? 0}.{ver?.Build ?? 0}"), dim: true);
+            verText.Margin = new Thickness(0, 0, 0, 8);
+            panel.Children.Add(verText);
 
             panel.Children.Add(Note(Loc.T("about.text")));
             panel.Children.Add(Note(Loc.T("about.text2")));
@@ -667,12 +677,13 @@ public partial class MainWindow : Window
     /// <summary>A caption followed by a clickable address.</summary>
     TextBlock LinkLine(string caption, string url)
     {
-        var t = Text("", dim: true, size: 11);
+        var t = Text("", dim: true);
         t.Margin = new Thickness(0, 6, 0, 0);
         t.Inlines.Add(caption + " ");
 
         var link = new System.Windows.Documents.Hyperlink(
             new System.Windows.Documents.Run(url));
+        StyleLink(link);
         link.Click += (_, _) => OpenUrl(url);
         t.Inlines.Add(link);
         return t;
@@ -943,7 +954,7 @@ public partial class MainWindow : Window
     /// </summary>
     Brush Res(string key) => (Brush)FindResource(key);
 
-    TextBlock Text(string text, bool dim = false, double size = 12) => new()
+    TextBlock Text(string text, bool dim = false, double size = 14) => new()
     {
         Text = text,
         FontSize = size,
@@ -953,10 +964,19 @@ public partial class MainWindow : Window
 
     TextBlock Note(string text)
     {
-        var t = Text(text, dim: true, size: 11);
+        var t = Text(text, dim: true);
         t.Margin = new Thickness(0, 0, 0, 8);
         return t;
     }
+
+    /// <summary>
+    /// The stock WPF hyperlink is web-blue with a red hover, both hardcoded in its default
+    /// style and neither readable on the dark theme. A local foreground wins over the
+    /// style triggers, so links stay in the theme's accent text colour.
+    /// </summary>
+    static void StyleLink(System.Windows.Documents.Hyperlink link) =>
+        link.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty,
+            "AccentTextFillColorPrimaryBrush");
 
     /// <summary>A question-mark glyph revealing the explanation on hover.</summary>
     TextBlock HelpIcon(string text)
@@ -1011,7 +1031,7 @@ public partial class MainWindow : Window
             Foreground = Res("Fg"),
             VerticalAlignment = VerticalAlignment.Center
         });
-        var label = Text(title, size: 13);
+        var label = Text(title);
         label.Margin = new Thickness(12, 0, 0, 0);
         label.VerticalAlignment = VerticalAlignment.Center;
         row.Children.Add(label);
@@ -1021,7 +1041,7 @@ public partial class MainWindow : Window
     StackPanel Labeled(string label, UIElement control, string? help = null)
     {
         var sp = new StackPanel();
-        var caption = Text(label, dim: true, size: 11);
+        var caption = Text(label, dim: true);
         if (help == null) sp.Children.Add(caption);
         else
         {
@@ -1038,7 +1058,7 @@ public partial class MainWindow : Window
                       Action<double> onChange, Func<double, string>? format = null,
                       string? help = null)
     {
-        var text = Text("", size: 12);
+        var text = Text("");
         var slider = new System.Windows.Controls.Slider
         {
             Minimum = min,
@@ -1073,7 +1093,7 @@ public partial class MainWindow : Window
         return sp;
     }
 
-    StackPanel IntBox(string label, int value, Action<int> onChange)
+    StackPanel IntBox(string label, int value, Action<int> onChange, string? help = null)
     {
         var box = new TextBox { Text = value.ToString(), Margin = new Thickness(0, 2, 0, 8) };
         box.TextChanged += (_, _) =>
@@ -1081,7 +1101,7 @@ public partial class MainWindow : Window
             if (_rebuildingUi) return;
             if (int.TryParse(box.Text, out int v) && v >= 0) { onChange(v); MarkDirty(); }
         };
-        return Labeled(label, box);
+        return Labeled(label, box, help);
     }
 
     UIElement Check(string label, bool value, Action<bool> onChange, string? help = null)

@@ -352,13 +352,6 @@ public partial class MainWindow : Window
             };
             panel.Children.Add(Labeled(Loc.T("main.language"), _langBox, Loc.T("main.language.note")));
 
-            panel.Children.Add(Check(Loc.T("main.startmin"), _cfg.StartMinimized, v => _cfg.StartMinimized = v));
-            panel.Children.Add(Check(Loc.T("main.tray"), _cfg.MinimizeToTray, v =>
-            {
-                _cfg.MinimizeToTray = v;
-                if (_tray != null) _tray.Visible = v;
-            }));
-
             // the registry is the real state; mirror it so a stale stored flag cannot make
             // Cancel silently switch autostart back on or off
             _cfg.Autostart = Autostart.IsEnabled();
@@ -367,6 +360,20 @@ public partial class MainWindow : Window
                 _cfg.Autostart = v;
                 Autostart.Set(v);
             }));
+
+            // starting minimised only makes sense together with the tray, so the option
+            // follows the tray checkbox
+            CheckBox startMin = null!;
+            panel.Children.Add(Check(Loc.T("main.tray"), _cfg.MinimizeToTray, v =>
+            {
+                _cfg.MinimizeToTray = v;
+                if (_tray != null) _tray.Visible = v;
+                startMin.IsEnabled = v;
+                if (!v) startMin.IsChecked = false;
+            }));
+            startMin = (CheckBox)Check(Loc.T("main.startmin"), _cfg.StartMinimized, v => _cfg.StartMinimized = v);
+            startMin.IsEnabled = _cfg.MinimizeToTray;
+            panel.Children.Add(startMin);
 
             panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v,
                 Loc.T("main.boost.note")));

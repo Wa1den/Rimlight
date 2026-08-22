@@ -18,7 +18,7 @@ public static class Loc
     /// the built-ins so translations can be corrected - but that also meant an old file
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it.
     /// </summary>
-    const string Version = "8";
+    const string Version = "9";
 
     public static string Language { get; private set; } = "ru";
 
@@ -140,12 +140,12 @@ public static class Loc
         ["tab.about"] = "О программе",
 
         ["main.boost"] = "Усилить превью",
-        ["main.boost.note"] = "Поднимает яркость только на экране. Светодиод при значении 30 хорошо виден в тёмной комнате, а монитор рисует его почти чёрным.",
+        ["main.boost.note"] = "Повышает яркость только в превью. Малые значения на светодиодах заметно ярче, чем на мониторе.",
         ["main.startmin"] = "Запускать свёрнутым в трей",
         ["about.head"] = "Rimlight",
         ["about.version"] = "Версия {0}",
-        ["about.text"] = "Фоновая подсветка монитора по картинке с экрана: края кадра усредняются по зонам и уходят на адресную ленту через COM-порт по протоколу Adalight.",
-        ["about.text2"] = "Захват идёт лестницей — Desktop Duplication, Windows Graphics Capture, GDI — и переключается сам, когда быстрый путь перестаёт отдавать кадры, чтобы подсветка не замирала. Кадрами может делиться с модулем подсветки корпуса.",
+        ["about.text"] = "Программа фоновой подсветки монитора: цвета по краям экрана усредняются по зонам и отправляются на адресную светодиодную ленту через COM-порт по протоколу Adalight.",
+        ["about.text2"] = "Захват экрана выполняется методами Desktop Duplication, Windows Graphics Capture и GDI с автоматическим переключением, если текущий метод перестаёт выдавать кадры. Кадры могут передаваться модулю подсветки корпуса.",
         ["about.repo"] = "Репозиторий проекта:",
         ["about.firmware"] = "Прошивка контроллера и исходная задумка:",
         ["main.stats"] = "Отображать статистику",
@@ -154,9 +154,9 @@ public static class Loc
         ["main.tray"] = "Сворачивать в трей",
         ["main.autostart"] = "Запускать вместе с Windows",
         ["main.log"] = "Писать лог",
-        ["main.log.note"] = "Лог складывается рядом с настройками.",
+        ["main.log.note"] = "Лог сохраняется в папке настроек.",
         ["main.language"] = "Язык",
-        ["main.language.note"] = "Переводы лежат в JSON рядом с настройками, их можно править и дополнять.",
+        ["main.language.note"] = "Переводы хранятся в JSON-файлах рядом с настройками, их можно править и дополнять.",
         ["main.export"] = "Экспорт настроек",
         ["main.import"] = "Импорт",
         ["main.exit"] = "Выход",
@@ -182,7 +182,7 @@ public static class Loc
         ["layout.margin"] = "Отступ от углов по горизонтали, % ширины",
         ["layout.marginV"] = "Отступ от углов по вертикали, % ширины",
         ["layout.depth"] = "Глубина зоны, % ширины",
-        ["layout.note"] = "Все проценты считаются от ширины экрана, чтобы значения были сопоставимы в пикселях. Отступы по горизонтали и по вертикали задаются независимо.",
+        ["layout.note"] = "Отступ зон от края экрана: сопоставляет превью с реальным положением диодов. Проценты считаются от ширины экрана.",
         ["layout.total"] = "Всего диодов: {0}",
 
         ["color.brightness"] = "Максимальная яркость",
@@ -190,27 +190,27 @@ public static class Loc
         ["color.saturation"] = "Насыщенность",
         ["color.gamma"] = "Гамма",
         ["color.temperature"] = "Цветовая температура, K",
-        ["color.gainR"] = "Усиление R",
-        ["color.gainG"] = "Усиление G",
-        ["color.gainB"] = "Усиление B",
+        ["color.gainR"] = "Усиление красного",
+        ["color.gainG"] = "Усиление зелёного",
+        ["color.gainB"] = "Усиление синего",
         ["color.dither"] = "Дизеринг",
         ["color.dither.note"] = "Сглаживает ступени на тёмных сценах, перенося ошибку округления на соседний диод.",
         ["color.rise"] = "Сглаживание: подъём",
-        ["color.rise.note"] = "Сглаживание изменений во времени: какую долю пути до нового, более яркого цвета диод проходит за кадр. Меньше значение — плавнее, но подсветка сильнее запаздывает.",
+        ["color.rise.note"] = "Доля пути до нового, более яркого цвета, проходимая за кадр. Меньшие значения дают более плавные переходы, но увеличивают запаздывание.",
         ["color.fall"] = "Сглаживание: спад",
-        ["color.fall.note"] = "То же при затемнении. Спад обычно ставят медленнее подъёма: свет гаснет мягко, и подсветка не мерцает на тёмных сценах.",
+        ["color.fall.note"] = "То же при уменьшении яркости. Спад обычно делается медленнее подъёма, чтобы яркость снижалась плавно и не было мерцания на тёмных сценах.",
 
         ["capture.method"] = "Метод захвата",
         ["capture.auto"] = "Авто",
         ["capture.dda"] = "Только DDA",
         ["capture.wgc"] = "Только WGC",
         ["capture.gdi"] = "Только GDI (медленный)",
-        ["capture.method.note"] = "Авто использует быстрые методы и подстраховывается медленным, когда они не отдают кадры; применяется сразу. DDA (Desktop Duplication) — самый быстрый захват экрана. WGC (Windows Graphics Capture) — чуть медленнее, но стабильнее в играх и полноэкранных приложениях. GDI — самый медленный, зато работает почти везде.",
-        ["capture.fps"] = "Потолок частоты, к/с",
-        ["capture.onchange"] = "Слать только при смене цветов",
-        ["capture.onchange.note"] = "Прошивка гасит ленту после 10 с молчания, поэтому одинаковый кадр всё равно повторяется раз в 2 с.",
-        ["capture.publish"] = "Отдавать снимки экрана в модуль подсветки",
-        ["capture.publish.note"] = "Кадр кладётся в разделяемую память, откуда его берёт CaseLight — подсветка корпуса. Своего захвата ему тогда не нужно. Без слушателя это просто лишнее копирование, поэтому по умолчанию выключено.",
+        ["capture.method.note"] = "Авто использует быстрые методы и переключается на медленный, когда они перестают выдавать кадры; применяется сразу. DDA (Desktop Duplication) — самый быстрый. WGC (Windows Graphics Capture) — немного медленнее, стабильнее в играх и полноэкранных приложениях. GDI — самый медленный, но работает почти везде.",
+        ["capture.fps"] = "Максимум кадров в секунду",
+        ["capture.onchange"] = "Отправлять только при смене цветов",
+        ["capture.onchange.note"] = "Прошивка выключает ленту, если данные не приходят 10 секунд, поэтому одинаковый кадр всё равно отправляется раз в 2 секунды.",
+        ["capture.publish"] = "Передавать кадры модулю подсветки корпуса",
+        ["capture.publish.note"] = "Кадры помещаются в разделяемую память для модуля подсветки корпуса (CaseLight), которому тогда не нужен собственный захват экрана. Если модуль не запущен, копирование бесполезно, поэтому по умолчанию выключено.",
 
         ["power.head"] = "Выключать подсветку при:",
         ["power.exit"] = "выходе из программы",
@@ -229,9 +229,9 @@ public static class Loc
         ["stats.reconnects"] = "переподключений",
         ["stats.notrunning"] = "захват не запущен",
 
-        ["warn.paused"] = "Пауза: {0} — лента погашена.",
-        ["warn.port"] = "Порт не открылся. Проверь номер и что его не занял другой софт.",
-        ["warn.count"] = "Сумма диодов {0} должна совпадать с NUM_LEDS в прошивке — иначе картинка поедет по кругу.",
+        ["warn.paused"] = "Пауза: {0}. Лента выключена.",
+        ["warn.port"] = "Не удалось открыть порт. Проверьте имя порта и что он не занят другой программой.",
+        ["warn.count"] = "Сумма диодов {0} должна совпадать со значением NUM_LEDS в прошивке, иначе изображение смещается вдоль ленты.",
 
         ["dialog.filter"] = "Настройки Rimlight (*.json)|*.json",
         ["dialog.saveFail"] = "Не удалось сохранить: ",
@@ -244,7 +244,7 @@ public static class Loc
         ["capture.autoSuffix"] = "авто",
         ["layout.overlay.show"] = "Показать схему на экране",
         ["layout.overlay.hide"] = "Скрыть схему",
-        ["layout.overlay.note"] = "Схема ложится поверх всего на выбранном мониторе и живёт вместе с настройками. Клик по ячейке зажигает её и соответствующий светодиод зелёным — так проверяется, что номера совпадают с лентой. Esc закрывает."
+        ["layout.overlay.note"] = "Схема отображается поверх всех окон на выбранном мониторе и обновляется при изменении настроек. Щелчок по ячейке подсвечивает её и соответствующий светодиод зелёным: так проверяется соответствие номеров. Esc закрывает схему."
     };
 
     static Dictionary<string, string> English() => new()
@@ -258,12 +258,12 @@ public static class Loc
         ["tab.about"] = "About",
 
         ["main.boost"] = "Brighten preview",
-        ["main.boost.note"] = "Affects the on-screen preview only. A value of 30 is clearly visible on an LED in a dim room, while a monitor renders it almost black.",
+        ["main.boost.note"] = "Raises brightness in the preview only. Low values are noticeably brighter on LEDs than on a monitor.",
         ["main.startmin"] = "Start minimised to tray",
         ["about.head"] = "Rimlight",
         ["about.version"] = "Version {0}",
-        ["about.text"] = "Bias lighting driven by what is on screen: the edges of each frame are averaged per zone and sent to an addressable strip over a serial port using the Adalight protocol.",
-        ["about.text2"] = "Capture runs as a ladder - Desktop Duplication, Windows Graphics Capture, GDI - switching by itself when a fast path stops delivering, so the light never simply stops. Frames can be shared with the case lighting module.",
+        ["about.text"] = "Monitor bias lighting software: colours along the screen edges are averaged per zone and sent to an addressable LED strip over a serial port using the Adalight protocol.",
+        ["about.text2"] = "Screen capture uses Desktop Duplication, Windows Graphics Capture and GDI, switching automatically when the current method stops delivering frames. Frames can be shared with the case lighting module.",
         ["about.repo"] = "Project repository:",
         ["about.firmware"] = "Controller firmware and the original idea:",
         ["main.stats"] = "Show statistics",
@@ -272,9 +272,9 @@ public static class Loc
         ["main.tray"] = "Minimise to tray",
         ["main.autostart"] = "Start with Windows",
         ["main.log"] = "Write log",
-        ["main.log.note"] = "The log is kept next to the settings file.",
+        ["main.log.note"] = "The log is saved in the settings folder.",
         ["main.language"] = "Language",
-        ["main.language.note"] = "Translations live in JSON next to the settings and can be edited or extended.",
+        ["main.language.note"] = "Translations are stored as JSON files next to the settings and can be edited or extended.",
         ["main.export"] = "Export settings",
         ["main.import"] = "Import",
         ["main.exit"] = "Exit",
@@ -300,7 +300,7 @@ public static class Loc
         ["layout.margin"] = "Corner margin, horizontal, % of width",
         ["layout.marginV"] = "Corner margin, vertical, % of width",
         ["layout.depth"] = "Zone depth, % of width",
-        ["layout.note"] = "All percentages are of screen width so the values stay comparable in pixels. Horizontal and vertical margins are set independently.",
+        ["layout.note"] = "Margin between the zones and the screen edge, used to align the preview with the physical LED positions. Percentages are of screen width.",
         ["layout.total"] = "Total LEDs: {0}",
 
         ["color.brightness"] = "Maximum brightness",
@@ -308,27 +308,27 @@ public static class Loc
         ["color.saturation"] = "Saturation",
         ["color.gamma"] = "Gamma",
         ["color.temperature"] = "Colour temperature, K",
-        ["color.gainR"] = "Gain R",
-        ["color.gainG"] = "Gain G",
-        ["color.gainB"] = "Gain B",
+        ["color.gainR"] = "Red gain",
+        ["color.gainG"] = "Green gain",
+        ["color.gainB"] = "Blue gain",
         ["color.dither"] = "Dithering",
         ["color.dither.note"] = "Smooths banding in dark scenes by passing the rounding error to the next LED.",
         ["color.rise"] = "Smoothing: rise",
-        ["color.rise.note"] = "Smoothing over time: the share of the way towards a new, brighter colour an LED travels per frame. Lower is smoother but the light lags more.",
+        ["color.rise.note"] = "The share of the way towards a new, brighter colour covered per frame. Lower values give smoother transitions but increase the lag.",
         ["color.fall"] = "Smoothing: fall",
-        ["color.fall.note"] = "The same for dimming. Fall is usually slower than rise so the light fades softly and does not flicker on dark scenes.",
+        ["color.fall.note"] = "The same for decreasing brightness. Fall is usually slower than rise so brightness drops gradually without flicker in dark scenes.",
 
         ["capture.method"] = "Capture method",
         ["capture.auto"] = "Auto",
         ["capture.dda"] = "DDA only",
         ["capture.wgc"] = "WGC only",
         ["capture.gdi"] = "GDI only (slow)",
-        ["capture.method.note"] = "Auto uses the fast methods and falls back to the slow one whenever they stop delivering frames; applies immediately. DDA (Desktop Duplication) is the fastest screen capture. WGC (Windows Graphics Capture) is slightly slower but steadier in games and fullscreen apps. GDI is the slowest but works almost everywhere.",
-        ["capture.fps"] = "Frame rate cap",
+        ["capture.method.note"] = "Auto uses the fast methods and switches to the slow one when they stop delivering frames; applies immediately. DDA (Desktop Duplication) is the fastest. WGC (Windows Graphics Capture) is slightly slower and steadier in games and fullscreen applications. GDI is the slowest but works almost everywhere.",
+        ["capture.fps"] = "Maximum frames per second",
         ["capture.onchange"] = "Send only when colours change",
-        ["capture.onchange.note"] = "The firmware blanks the strip after 10 s of silence, so an identical frame is still repeated every 2 s.",
-        ["capture.publish"] = "Share screen frames with the lighting module",
-        ["capture.publish.note"] = "The frame is placed in shared memory for CaseLight, the case lighting, to pick up, so it needs no capture of its own. With nothing listening this is a pointless copy, hence off by default.",
+        ["capture.onchange.note"] = "The firmware turns the strip off after 10 seconds without data, so an identical frame is still sent every 2 seconds.",
+        ["capture.publish"] = "Share frames with the case lighting module",
+        ["capture.publish.note"] = "Frames are placed in shared memory for the case lighting module (CaseLight), which then needs no screen capture of its own. With the module not running the copy is useless, so this is off by default.",
 
         ["power.head"] = "Turn the strip off on:",
         ["power.exit"] = "application exit",
@@ -347,9 +347,9 @@ public static class Loc
         ["stats.reconnects"] = "reconnects",
         ["stats.notrunning"] = "capture not running",
 
-        ["warn.paused"] = "Paused: {0} — the strip is off.",
-        ["warn.port"] = "The port did not open. Check the name and that nothing else is holding it.",
-        ["warn.count"] = "The LED total {0} must match NUM_LEDS in the firmware, or the picture will be rotated.",
+        ["warn.paused"] = "Paused: {0}. The strip is off.",
+        ["warn.port"] = "Could not open the port. Check the port name and that no other program is using it.",
+        ["warn.count"] = "The LED total {0} must match NUM_LEDS in the firmware, otherwise the image is shifted along the strip.",
 
         ["dialog.filter"] = "Rimlight settings (*.json)|*.json",
         ["dialog.saveFail"] = "Could not save: ",
@@ -362,6 +362,6 @@ public static class Loc
         ["capture.autoSuffix"] = "auto",
         ["layout.overlay.show"] = "Show map on screen",
         ["layout.overlay.hide"] = "Hide map",
-        ["layout.overlay.note"] = "The map sits on top of everything on the selected monitor and follows the settings live. Clicking a cell lights it and the matching LED green, which is how you confirm the numbering matches the strip. Esc closes it."
+        ["layout.overlay.note"] = "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map."
     };
 }

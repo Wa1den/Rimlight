@@ -141,6 +141,12 @@ public sealed class RimlightConfig
     /// </summary>
     public bool PreviewBoost { get; set; } = true;
 
+    /// <summary>The zone preview panel; off shrinks the window to the settings column.</summary>
+    public bool ShowPreview { get; set; } = true;
+
+    /// <summary>The statistics block under the preview; only visible while the preview is.</summary>
+    public bool ShowStats { get; set; } = true;
+
     public bool OffOnExit { get; set; } = true;
     public bool OffOnDisplayOff { get; set; } = true;
     public bool OffOnLock { get; set; } = true;

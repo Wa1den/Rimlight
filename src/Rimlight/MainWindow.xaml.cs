@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO.Ports;
 using System.Windows;
@@ -29,6 +29,12 @@ public partial class MainWindow : Window
 
     readonly List<UIElement> _pages = new();
     readonly List<string> _pageTitles = new();
+
+    readonly TextBlock[] _statLabels = new TextBlock[6];
+    readonly TextBlock[] _statValues = new TextBlock[6];
+
+    /// <summary>Window width to come back to when the preview is switched on again.</summary>
+    double _wideWidth;
 
     ComboBox _monitorBox = null!, _portBox = null!, _cornerBox = null!, _modeBox = null!, _langBox = null!;
     TextBlock _totalText = null!;
@@ -82,6 +88,25 @@ public partial class MainWindow : Window
         };
 
         RestoreWindowGeometry();
+
+        for (int i = 0; i < _statLabels.Length; i++)
+        {
+            StatsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var label = Text("", dim: true);
+            label.Margin = new Thickness(0, 0, 18, 3);
+            Grid.SetRow(label, i);
+            var value = Text("");
+            value.Margin = new Thickness(0, 0, 0, 3);
+            Grid.SetRow(value, i);
+            Grid.SetColumn(value, 1);
+            StatsGrid.Children.Add(label);
+            StatsGrid.Children.Add(value);
+            _statLabels[i] = label;
+            _statValues[i] = value;
+        }
+
+        PreviewToggle.Checked += (_, _) => { if (_rebuildingUi) return; _cfg.ShowPreview = true; MarkDirty(); ApplyPreviewLayout(); };
+        PreviewToggle.Unchecked += (_, _) => { if (_rebuildingUi) return; _cfg.ShowPreview = false; MarkDirty(); ApplyPreviewLayout(); };
 
         Nav.SelectionChanged += (_, _) =>
         {
@@ -154,6 +179,7 @@ public partial class MainWindow : Window
 
     void RestoreWindowGeometry()
     {
+        _wideWidth = Math.Max(MinWidth, _cfg.WindowWidth);
         Width = Math.Max(MinWidth, _cfg.WindowWidth);
         Height = Math.Max(MinHeight, _cfg.WindowHeight);
 
@@ -171,6 +197,33 @@ public partial class MainWindow : Window
         }
 
         if (_cfg.WindowMaximized) WindowState = WindowState.Maximized;
+
+        ApplyPreviewLayout();
+    }
+
+    /// <summary>
+    /// The preview is the whole right side, so hiding it also narrows the window: compact
+    /// mode sizes to the settings column and the wide width is remembered for the way
+    /// back. Only the wide width is ever persisted.
+    /// </summary>
+    void ApplyPreviewLayout()
+    {
+        if (_cfg.ShowPreview)
+        {
+            RightColumn.Visibility = Visibility.Visible;
+            SizeToContent = SizeToContent.Manual;
+            MinWidth = 1317;
+            if (IsLoaded && WindowState == WindowState.Normal && ActualWidth < MinWidth)
+                Width = Math.Max(MinWidth, _wideWidth);
+        }
+        else
+        {
+            if (IsLoaded && WindowState == WindowState.Normal && ActualWidth >= MinWidth)
+                _wideWidth = ActualWidth;
+            RightColumn.Visibility = Visibility.Collapsed;
+            MinWidth = 0;
+            SizeToContent = SizeToContent.Width;
+        }
     }
 
     void SaveWindowGeometry()
@@ -185,7 +238,8 @@ public partial class MainWindow : Window
 
         if (r.Width > 100 && r.Height > 100)
         {
-            _cfg.WindowWidth = r.Width;
+            // in compact mode the actual width is the auto-fit one; keep the wide width
+            _cfg.WindowWidth = _cfg.ShowPreview ? r.Width : _wideWidth;
             _cfg.WindowHeight = r.Height;
             _cfg.WindowLeft = r.Left;
             _cfg.WindowTop = r.Top;
@@ -254,6 +308,8 @@ public partial class MainWindow : Window
         _pages.Clear();
         _pageTitles.Clear();
         PreviewCaption.Text = Loc.T("preview.caption");
+        PreviewToggle.Content = Loc.T("nav.preview");
+        PreviewToggle.IsChecked = _cfg.ShowPreview;    // guarded by _rebuildingUi
 
         AddTab(Loc.T("tab.main"), "", panel =>
         {
@@ -269,11 +325,12 @@ public partial class MainWindow : Window
         Loc.Load(_cfg.Language);
                 BuildSettings();          // the whole panel is built in code, so rebuild it
             };
-            panel.Children.Add(Labeled(Loc.T("main.language"), _langBox));
-            panel.Children.Add(Note(Loc.T("main.language.note")));
+            panel.Children.Add(Labeled(Loc.T("main.language"), _langBox, Loc.T("main.language.note")));
 
-            panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v));
-            panel.Children.Add(Note(Loc.T("main.boost.note")));
+            panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v,
+                Loc.T("main.boost.note")));
+            panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v => _cfg.ShowStats = v,
+                Loc.T("main.stats.note")));
 
             panel.Children.Add(Check(Loc.T("main.startmin"), _cfg.StartMinimized, v => _cfg.StartMinimized = v));
             panel.Children.Add(Check(Loc.T("main.tray"), _cfg.MinimizeToTray, v =>
@@ -295,8 +352,7 @@ public partial class MainWindow : Window
             {
                 _cfg.WriteLog = v;
                 ProbeLog.Configure(RimlightConfig.LogPath, v);
-            }));
-            panel.Children.Add(Note(Loc.T("main.log.note")));
+            }, Loc.T("main.log.note")));
 
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
             var exportBtn = new Button { Content = Loc.T("main.export"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
@@ -371,37 +427,34 @@ public partial class MainWindow : Window
             RebuildOffsetSlider();
 
             panel.Children.Add(Slider(Loc.T("layout.margin"), _cfg.EdgeMarginPercent, 0, 15, 0.1,
-                v => { _cfg.EdgeMarginPercent = v; _engine.RequestRelayout(); }));
+                v => { _cfg.EdgeMarginPercent = v; _engine.RequestRelayout(); }, help: Loc.T("layout.note")));
             panel.Children.Add(Slider(Loc.T("layout.marginV"), _cfg.EdgeMarginPercentV, 0, 15, 0.1,
-                v => { _cfg.EdgeMarginPercentV = v; _engine.RequestRelayout(); }));
+                v => { _cfg.EdgeMarginPercentV = v; _engine.RequestRelayout(); }, help: Loc.T("layout.note")));
             panel.Children.Add(Slider(Loc.T("layout.depth"), _cfg.DepthPercent, 1, 25, 0.5,
-                v => { _cfg.DepthPercent = v; _engine.RequestRelayout(); }));
+                v => { _cfg.DepthPercent = v; _engine.RequestRelayout(); }, help: Loc.T("layout.note")));
 
-            panel.Children.Add(Note(Loc.T("layout.note")));
-
+            var totalRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
             _totalText = Text("", size: 13);
-            _totalText.Margin = new Thickness(0, 4, 0, 0);
             _totalText.FontWeight = FontWeights.Bold;
-            panel.Children.Add(_totalText);
+            totalRow.Children.Add(_totalText);
+            var totalHelp = HelpIcon("");
+            _countNote = (TextBlock)totalHelp.ToolTip;    // firmware warning, text set in UpdateTotal
+            totalRow.Children.Add(totalHelp);
+            panel.Children.Add(totalRow);
             UpdateTotal();
 
             // belongs next to the counters it talks about, not in the status panel where it
             // read as a permanent alarm
+            var overlayRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
             _overlayButton = new Button
             {
                 Content = Loc.T(_overlay != null ? "layout.overlay.hide" : "layout.overlay.show"),
-                Margin = new Thickness(0, 12, 0, 0),
                 Padding = new Thickness(8, 5, 8, 5)
             };
             _overlayButton.Click += (_, _) => ToggleOverlay();
-            panel.Children.Add(_overlayButton);
-            panel.Children.Add(Note(Loc.T("layout.overlay.note")));
-
-            var countNote = Text(string.Format(Loc.T("warn.count"), _cfg.TotalLeds), size: 11);
-            countNote.Foreground = Res("Warn");
-            countNote.Margin = new Thickness(0, 6, 0, 0);
-            _countNote = countNote;
-            panel.Children.Add(countNote);
+            overlayRow.Children.Add(_overlayButton);
+            overlayRow.Children.Add(HelpIcon(Loc.T("layout.overlay.note")));
+            panel.Children.Add(overlayRow);
         });
 
         AddTab(Loc.T("tab.color"), "", panel =>
@@ -421,8 +474,8 @@ public partial class MainWindow : Window
             panel.Children.Add(Slider(Loc.T("color.gainG"), _cfg.GainG, 0, 2, 0.01, v => _cfg.GainG = v));
             panel.Children.Add(Slider(Loc.T("color.gainB"), _cfg.GainB, 0, 2, 0.01, v => _cfg.GainB = v));
 
-            panel.Children.Add(Check(Loc.T("color.dither"), _cfg.Dithering, v => _cfg.Dithering = v));
-            panel.Children.Add(Note(Loc.T("color.dither.note")));
+            panel.Children.Add(Check(Loc.T("color.dither"), _cfg.Dithering, v => _cfg.Dithering = v,
+                Loc.T("color.dither.note")));
 
             panel.Children.Add(Slider(Loc.T("color.rise"), _cfg.SmoothingRise, 0.02, 1, 0.01, v => _cfg.SmoothingRise = v));
             panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01, v => _cfg.SmoothingFall = v));
@@ -443,20 +496,17 @@ public partial class MainWindow : Window
                 _dirty = true;
                 _engine.RestartCapture();     // applies at once; the port is left alone
             };
-            panel.Children.Add(Labeled(Loc.T("capture.method"), _modeBox));
-            panel.Children.Add(Note(Loc.T("capture.method.note")));
+            panel.Children.Add(Labeled(Loc.T("capture.method"), _modeBox, Loc.T("capture.method.note")));
 
             panel.Children.Add(Slider(Loc.T("capture.fps"), _cfg.MaxFps, 10, 144, 1, v => _cfg.MaxFps = (int)v));
 
-            panel.Children.Add(Check(Loc.T("capture.onchange"), _cfg.SendOnlyOnChange, v => _cfg.SendOnlyOnChange = v));
-            var keep = Note(Loc.T("capture.onchange.note"));
-            keep.Foreground = Res("Warn");
-            panel.Children.Add(keep);
+            panel.Children.Add(Check(Loc.T("capture.onchange"), _cfg.SendOnlyOnChange, v => _cfg.SendOnlyOnChange = v,
+                Loc.T("capture.onchange.note")));
 
             // Takes effect on the next output tick without restarting the engine, so no
             // port reopen and no bootloader pause for a checkbox.
-            panel.Children.Add(Check(Loc.T("capture.publish"), _cfg.PublishFrames, v => _cfg.PublishFrames = v));
-            panel.Children.Add(Note(Loc.T("capture.publish.note")));
+            panel.Children.Add(Check(Loc.T("capture.publish"), _cfg.PublishFrames, v => _cfg.PublishFrames = v,
+                Loc.T("capture.publish.note")));
         });
 
         AddTab(Loc.T("tab.power"), "", panel =>
@@ -490,6 +540,7 @@ public partial class MainWindow : Window
 
         _rebuildingUi = false;
         Nav.SelectedIndex = Math.Min(selected, Nav.Items.Count - 1);
+        ApplyPreviewLayout();    // rebuild paths include Cancel and Import, which may flip it
     }
 
     void CountChanged()
@@ -823,20 +874,29 @@ public partial class MainWindow : Window
         if (_cfg.CaptureMode == CaptureMode.Auto) activeNow += $" ({Loc.T("capture.autoSuffix")})";
         var snap = cap?.Metrics.Snapshot();
 
-        StatsText.Text =
-            $"{Loc.T("stats.monitor"),-9} {_engine.Monitor?.DisplayName ?? "?"}  {_engine.Monitor?.Width}x{_engine.Monitor?.Height}\n" +
-            $"{Loc.T("stats.method"),-9} {activeNow}\n" +
-            $"{Loc.T("stats.capture"),-9} {(snap?.FpsAvg5s ?? 0):F1}   p50 {(snap?.P50Ms ?? 0):F1} ms   p99 {(snap?.P99Ms ?? 0):F1} ms\n" +
-            $"{Loc.T("stats.output"),-9} {_engine.OutputFps:F1}   {Loc.T("stats.sent")} {_engine.FramesSent}   {Loc.T("stats.skipped")} {_engine.FramesSkipped}\n" +
-            $"{Loc.T("stats.port"),-9} {_engine.DeviceStatus}   {Loc.T("stats.reconnects")} {_engine.Reconnects}\n" +
-            $"{Loc.T("stats.sources"),-9} {capLine}";
+        _statLabels[0].Text = Loc.T("stats.monitor");
+        _statLabels[1].Text = Loc.T("stats.method");
+        _statLabels[2].Text = Loc.T("stats.capture");
+        _statLabels[3].Text = Loc.T("stats.output");
+        _statLabels[4].Text = Loc.T("stats.port");
+        _statLabels[5].Text = Loc.T("stats.sources");
+
+        _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}  {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
+        _statValues[1].Text = activeNow;
+        _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1}   p50 {(snap?.P50Ms ?? 0):F1} ms   p99 {(snap?.P99Ms ?? 0):F1} ms";
+        _statValues[3].Text = $"{_engine.OutputFps:F1}   {Loc.T("stats.sent")} {_engine.FramesSent}   {Loc.T("stats.skipped")} {_engine.FramesSkipped}";
+        _statValues[4].Text = $"{_engine.DeviceStatus}   {Loc.T("stats.reconnects")} {_engine.Reconnects}";
+        _statValues[5].Text = capLine;
+
+        // the toggle applies live; the block only exists while the preview column does
+        StatsCard.Visibility = _cfg.ShowStats ? Visibility.Visible : Visibility.Collapsed;
 
         var warnings = new List<string>();
         if (_engine.IsPaused) warnings.Add(string.Format(Loc.T("warn.paused"), _engine.PauseReason));
         if (_engine.DeviceHasError) warnings.Add(Loc.T("warn.port"));
 
         WarnText.Text = string.Join("\n", warnings);
-        WarnText.Visibility = warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        WarnCard.Visibility = warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         DirtyBar.Visibility = _dirty ? Visibility.Visible : Visibility.Collapsed;
         DirtyText.Text = Loc.T("unsaved");
@@ -866,6 +926,25 @@ public partial class MainWindow : Window
         var t = Text(text, dim: true, size: 11);
         t.Margin = new Thickness(0, 0, 0, 8);
         return t;
+    }
+
+    /// <summary>A question-mark glyph revealing the explanation on hover.</summary>
+    TextBlock HelpIcon(string text)
+    {
+        var icon = new TextBlock
+        {
+            Text = "",
+            FontFamily = (FontFamily)FindResource("Icons"),
+            FontSize = 12,
+            Foreground = Res("FgDim"),
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Help,
+            ToolTip = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 320 }
+        };
+        ToolTipService.SetInitialShowDelay(icon, 200);
+        ToolTipService.SetShowDuration(icon, 60000);
+        return icon;
     }
 
     void AddTab(string title, string glyph, Action<StackPanel> fill)
@@ -902,16 +981,25 @@ public partial class MainWindow : Window
         Nav.Items.Add(new ListBoxItem { Content = row });
     }
 
-    StackPanel Labeled(string label, UIElement control)
+    StackPanel Labeled(string label, UIElement control, string? help = null)
     {
         var sp = new StackPanel();
-        sp.Children.Add(Text(label, dim: true, size: 11));
+        var caption = Text(label, dim: true, size: 11);
+        if (help == null) sp.Children.Add(caption);
+        else
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(caption);
+            row.Children.Add(HelpIcon(help));
+            sp.Children.Add(row);
+        }
         sp.Children.Add(control);
         return sp;
     }
 
     StackPanel Slider(string label, double value, double min, double max, double tick,
-                      Action<double> onChange, Func<double, string>? format = null)
+                      Action<double> onChange, Func<double, string>? format = null,
+                      string? help = null)
     {
         var text = Text("", size: 12);
         var slider = new System.Windows.Controls.Slider
@@ -936,7 +1024,14 @@ public partial class MainWindow : Window
         };
 
         var sp = new StackPanel();
-        sp.Children.Add(text);
+        if (help == null) sp.Children.Add(text);
+        else
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(text);
+            row.Children.Add(HelpIcon(help));
+            sp.Children.Add(row);
+        }
         sp.Children.Add(slider);
         return sp;
     }
@@ -952,7 +1047,7 @@ public partial class MainWindow : Window
         return Labeled(label, box);
     }
 
-    CheckBox Check(string label, bool value, Action<bool> onChange)
+    UIElement Check(string label, bool value, Action<bool> onChange, string? help = null)
     {
         var cb = new CheckBox
         {
@@ -963,6 +1058,11 @@ public partial class MainWindow : Window
         };
         cb.Checked += (_, _) => { if (!_rebuildingUi) { onChange(true); MarkDirty(); } };
         cb.Unchecked += (_, _) => { if (!_rebuildingUi) { onChange(false); MarkDirty(); } };
-        return cb;
+        if (help == null) return cb;
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(cb);
+        row.Children.Add(HelpIcon(help));
+        return row;
     }
 }

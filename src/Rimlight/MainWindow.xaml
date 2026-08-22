@@ -19,22 +19,13 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- left rail: app identity on top, sections below -->
-        <Grid Grid.Column="0" Width="216" Margin="6,12,6,12">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-
-            <StackPanel Orientation="Horizontal" Margin="14,2,8,16">
-                <Image Source="pack://application:,,,/icon.ico" Width="20" Height="20"
-                       VerticalAlignment="Center"/>
-                <TextBlock Text="Rimlight" FontSize="14" FontWeight="SemiBold"
-                           Foreground="{StaticResource Fg}" Margin="10,0,0,0"
-                           VerticalAlignment="Center"/>
-            </StackPanel>
-
-            <ListBox x:Name="Nav" Grid.Row="1" Background="Transparent" BorderThickness="0"
+        <!-- left rail: the section list, sized by its longest caption; the preview
+             toggle sits at the bottom because the preview belongs to no one section -->
+        <DockPanel Grid.Column="0" Margin="6,12,6,12">
+            <CheckBox x:Name="PreviewToggle" DockPanel.Dock="Bottom" Margin="12,12,8,2"
+                      Foreground="{StaticResource Fg}"/>
+            <ListBox x:Name="Nav" Background="Transparent" BorderThickness="0"
+                     VerticalAlignment="Top"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
@@ -43,13 +34,14 @@
                     </Style>
                 </ListBox.ItemContainerStyle>
             </ListBox>
-        </Grid>
+        </DockPanel>
 
         <!-- settings page for the selected section -->
         <Grid Grid.Column="1" Margin="0,12,12,12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
@@ -58,7 +50,15 @@
 
             <ContentControl x:Name="PageHost" Grid.Row="1"/>
 
-            <Border x:Name="DirtyBar" Grid.Row="2" Style="{StaticResource Card}"
+            <!-- warnings live with the settings, not the preview, so hiding the preview
+                 cannot hide a dead port -->
+            <Border x:Name="WarnCard" Grid.Row="2" Style="{StaticResource Card}"
+                    Padding="12" Margin="0,10,0,0" Visibility="Collapsed">
+                <TextBlock x:Name="WarnText" Foreground="{StaticResource Warn}" FontSize="12"
+                           TextWrapping="Wrap"/>
+            </Border>
+
+            <Border x:Name="DirtyBar" Grid.Row="3" Style="{StaticResource Card}"
                     Padding="12" Margin="0,10,0,0" Visibility="Collapsed">
                 <DockPanel>
                     <Button x:Name="CancelButton" DockPanel.Dock="Right" Padding="14,6" Margin="8,0,0,0"/>
@@ -70,7 +70,7 @@
         </Grid>
 
         <!-- preview and status -->
-        <Grid Grid.Column="2" Margin="0,12,12,12">
+        <Grid x:Name="RightColumn" Grid.Column="2" Margin="0,12,12,12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -88,13 +88,13 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,10,0,0">
-                <StackPanel>
-                    <TextBlock x:Name="StatsText" Foreground="{StaticResource Fg}"
-                               FontFamily="Cascadia Mono,Consolas" FontSize="12"/>
-                    <TextBlock x:Name="WarnText" Foreground="{StaticResource Warn}" FontSize="12"
-                               TextWrapping="Wrap" Margin="0,8,0,0"/>
-                </StackPanel>
+            <Border x:Name="StatsCard" Grid.Row="1" Style="{StaticResource Card}" Margin="0,10,0,0">
+                <Grid x:Name="StatsGrid">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                </Grid>
             </Border>
         </Grid>
     </Grid>

@@ -1,16 +1,17 @@
 <Application x:Class="Rimlight.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+             StartupUri="MainWindow.xaml"
+             ThemeMode="System">
     <Application.Resources>
-        <SolidColorBrush x:Key="Bg" Color="#1E1E22" />
-        <SolidColorBrush x:Key="Panel" Color="#2A2A30" />
-        <SolidColorBrush x:Key="Fg" Color="#E8E8EC" />
-        <SolidColorBrush x:Key="FgDim" Color="#B4B4BE" />
-        <SolidColorBrush x:Key="Warn" Color="#D8B45A" />
+        <!-- Semantic aliases over the Fluent theme colour tokens. DynamicResource on the
+             Colour keeps every brush following the system light/dark switch at runtime. -->
+        <SolidColorBrush x:Key="Fg" Color="{DynamicResource TextFillColorPrimary}" />
+        <SolidColorBrush x:Key="FgDim" Color="{DynamicResource TextFillColorSecondary}" />
+        <SolidColorBrush x:Key="Warn" Color="{DynamicResource SystemFillColorCaution}" />
+        <SolidColorBrush x:Key="Panel" Color="{DynamicResource CardBackgroundFillColorDefault}" />
+        <SolidColorBrush x:Key="PanelStroke" Color="{DynamicResource CardStrokeColorDefault}" />
 
-        <!-- No implicit TextBlock style: WPF renders combo box items with TextBlock too,
-             and a light foreground there lands on the system's white popup. Foreground is
-             set explicitly on the text we create instead. -->
+        <FontFamily x:Key="Icons">Segoe Fluent Icons,Segoe MDL2 Assets</FontFamily>
     </Application.Resources>
 </Application>

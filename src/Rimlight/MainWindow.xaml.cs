@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     System.Windows.Forms.NotifyIcon? _tray;
     byte[] _previewColors = Array.Empty<byte>();
 
+    readonly List<UIElement> _pages = new();
+    readonly List<string> _pageTitles = new();
+
     ComboBox _monitorBox = null!, _portBox = null!, _cornerBox = null!, _modeBox = null!, _langBox = null!;
     TextBlock _totalText = null!;
     StackPanel _offsetHost = null!;
@@ -79,6 +82,16 @@ public partial class MainWindow : Window
         };
 
         RestoreWindowGeometry();
+
+        Nav.SelectionChanged += (_, _) =>
+        {
+            int i = Nav.SelectedIndex;
+            if (i < 0 || i >= _pages.Count) return;
+            PageTitle.Text = _pageTitles[i];
+            PageHost.Content = _pages[i];
+        };
+        if (TryFindResource("AccentButtonStyle") is Style accent) ApplyButton.Style = accent;
+
         BuildSettings();
 
         Loaded += (_, _) =>
@@ -234,13 +247,17 @@ public partial class MainWindow : Window
 
     void BuildSettings()
     {
+        int selected = Math.Max(0, Nav.SelectedIndex);   // survive a rebuild on the open section
+
         _rebuildingUi = true;
-        Tabs.Items.Clear();
+        Nav.Items.Clear();
+        _pages.Clear();
+        _pageTitles.Clear();
         PreviewCaption.Text = Loc.T("preview.caption");
 
-        AddTab(Loc.T("tab.main"), panel =>
+        AddTab(Loc.T("tab.main"), "", panel =>
         {
-            _langBox = new ComboBox { Margin = new Thickness(0, 2, 0, 4), Foreground = Brushes.Black };
+            _langBox = new ComboBox { Margin = new Thickness(0, 2, 0, 4) };
             foreach (var code in Loc.Available) _langBox.Items.Add(Loc.DisplayName(code));
             _langBox.SelectedIndex = Math.Max(0, Array.IndexOf(Loc.Available, Loc.Language));
             _langBox.SelectionChanged += (_, _) =>
@@ -295,8 +312,7 @@ public partial class MainWindow : Window
 
             var pathText = Text("", dim: true, size: 11);
             var link = new System.Windows.Documents.Hyperlink(
-                new System.Windows.Documents.Run(RimlightConfig.Path))
-            { Foreground = Res("Fg") };
+                new System.Windows.Documents.Run(RimlightConfig.Path));
             link.Click += (_, _) => OpenSettingsFolder();
             pathText.Inlines.Add(Loc.T("main.paths").Replace("{0}", "").TrimEnd());
             pathText.Inlines.Add(" ");
@@ -305,16 +321,16 @@ public partial class MainWindow : Window
             panel.Children.Add(pathText);
         });
 
-        AddTab(Loc.T("tab.device"), panel =>
+        AddTab(Loc.T("tab.device"), "", panel =>
         {
-            _monitorBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), Foreground = Brushes.Black };
+            _monitorBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
             foreach (var m in _monitors) _monitorBox.Items.Add(m.ToString());
             int idx = _monitors.FindIndex(m => m.DeviceName == _cfg.MonitorDeviceName);
             if (idx < 0) idx = _monitors.FindIndex(m => m.IsPrimary);
             _monitorBox.SelectedIndex = Math.Max(0, idx);
             panel.Children.Add(Labeled(Loc.T("device.monitor"), _monitorBox));
 
-            _portBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), IsEditable = true, Text = _cfg.PortName, Foreground = Brushes.Black };
+            _portBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), IsEditable = true, Text = _cfg.PortName };
             foreach (var p in SerialPort.GetPortNames()) _portBox.Items.Add(p);
             panel.Children.Add(Labeled(Loc.T("device.port"), _portBox));
 
@@ -325,14 +341,14 @@ public partial class MainWindow : Window
             panel.Children.Add(apply);
         });
 
-        AddTab(Loc.T("tab.layout"), panel =>
+        AddTab(Loc.T("tab.layout"), "", panel =>
         {
             panel.Children.Add(IntBox(Loc.T("layout.top"), _cfg.TopCount, v => { _cfg.TopCount = v; CountChanged(); }));
             panel.Children.Add(IntBox(Loc.T("layout.bottom"), _cfg.BottomCount, v => { _cfg.BottomCount = v; CountChanged(); }));
             panel.Children.Add(IntBox(Loc.T("layout.left"), _cfg.LeftCount, v => { _cfg.LeftCount = v; CountChanged(); }));
             panel.Children.Add(IntBox(Loc.T("layout.right"), _cfg.RightCount, v => { _cfg.RightCount = v; CountChanged(); }));
 
-            _cornerBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), Foreground = Brushes.Black };
+            _cornerBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
             _cornerBox.Items.Add(Loc.T("layout.corner.br"));
             _cornerBox.Items.Add(Loc.T("layout.corner.bl"));
             _cornerBox.Items.Add(Loc.T("layout.corner.tl"));
@@ -388,7 +404,7 @@ public partial class MainWindow : Window
             panel.Children.Add(countNote);
         });
 
-        AddTab(Loc.T("tab.color"), panel =>
+        AddTab(Loc.T("tab.color"), "", panel =>
         {
             panel.Children.Add(Slider(Loc.T("color.brightness"), _cfg.MaxBrightness, 0, 1, 0.01, v => _cfg.MaxBrightness = v));
 
@@ -412,9 +428,9 @@ public partial class MainWindow : Window
             panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01, v => _cfg.SmoothingFall = v));
         });
 
-        AddTab(Loc.T("tab.capture"), panel =>
+        AddTab(Loc.T("tab.capture"), "", panel =>
         {
-            _modeBox = new ComboBox { Margin = new Thickness(0, 2, 0, 4), Foreground = Brushes.Black };
+            _modeBox = new ComboBox { Margin = new Thickness(0, 2, 0, 4) };
             _modeBox.Items.Add(Loc.T("capture.auto"));
             _modeBox.Items.Add(Loc.T("capture.dda"));
             _modeBox.Items.Add(Loc.T("capture.wgc"));
@@ -443,7 +459,7 @@ public partial class MainWindow : Window
             panel.Children.Add(Note(Loc.T("capture.publish.note")));
         });
 
-        AddTab(Loc.T("tab.power"), panel =>
+        AddTab(Loc.T("tab.power"), "", panel =>
         {
             var head = Text(Loc.T("power.head"), size: 13);
             head.FontWeight = FontWeights.Bold;
@@ -456,7 +472,7 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("power.suspend"), _cfg.OffOnSuspend, v => _cfg.OffOnSuspend = v));
         });
 
-        AddTab(Loc.T("tab.about"), panel =>
+        AddTab(Loc.T("tab.about"), "", panel =>
         {
             var head = Text(Loc.T("about.head"), size: 13);
             head.FontWeight = FontWeights.Bold;
@@ -473,6 +489,7 @@ public partial class MainWindow : Window
         });
 
         _rebuildingUi = false;
+        Nav.SelectedIndex = Math.Min(selected, Nav.Items.Count - 1);
     }
 
     void CountChanged()
@@ -558,8 +575,6 @@ public partial class MainWindow : Window
 
     void CancelChanges()
     {
-        int tab = Tabs.SelectedIndex;      // rebuilding the tabs would drop the user back to the first
-
         _cfg.CopyFrom(_saved);
         _dirty = false;
 
@@ -568,8 +583,7 @@ public partial class MainWindow : Window
         ProbeLog.Configure(RimlightConfig.LogPath, _cfg.WriteLog);
         Autostart.Set(_cfg.Autostart);
 
-        BuildSettings();
-        if (tab >= 0 && tab < Tabs.Items.Count) Tabs.SelectedIndex = tab;
+        BuildSettings();      // restores the open section itself
 
         _engine.RequestRelayout();
         _engine.RestartCapture();
@@ -585,7 +599,7 @@ public partial class MainWindow : Window
         t.Inlines.Add(caption + " ");
 
         var link = new System.Windows.Documents.Hyperlink(
-            new System.Windows.Documents.Run(url)) { Foreground = Res("Fg") };
+            new System.Windows.Documents.Run(url));
         link.Click += (_, _) => OpenUrl(url);
         t.Inlines.Add(link);
         return t;
@@ -854,29 +868,38 @@ public partial class MainWindow : Window
         return t;
     }
 
-    void AddTab(string title, Action<StackPanel> fill)
+    void AddTab(string title, string glyph, Action<StackPanel> fill)
     {
         var panel = new StackPanel();
         fill(panel);
 
         var body = new Border
         {
-            Background = Res("Panel"),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(14),
+            Style = (Style)FindResource("Card"),
             Child = panel
         };
 
-        Tabs.Items.Add(new TabItem
+        _pages.Add(new ScrollViewer
         {
-            Header = title,
-            Content = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Padding = new Thickness(6),
-                Content = body
-            }
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = body
         });
+        _pageTitles.Add(title);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(new TextBlock
+        {
+            Text = glyph,
+            FontFamily = (FontFamily)FindResource("Icons"),
+            FontSize = 16,
+            Foreground = Res("Fg"),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        var label = Text(title, size: 13);
+        label.Margin = new Thickness(12, 0, 0, 0);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(label);
+        Nav.Items.Add(new ListBoxItem { Content = row });
     }
 
     StackPanel Labeled(string label, UIElement control)
@@ -920,7 +943,7 @@ public partial class MainWindow : Window
 
     StackPanel IntBox(string label, int value, Action<int> onChange)
     {
-        var box = new TextBox { Text = value.ToString(), Margin = new Thickness(0, 2, 0, 8), Foreground = Brushes.Black };
+        var box = new TextBox { Text = value.ToString(), Margin = new Thickness(0, 2, 0, 8) };
         box.TextChanged += (_, _) =>
         {
             if (_rebuildingUi) return;

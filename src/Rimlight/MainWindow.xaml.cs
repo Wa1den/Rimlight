@@ -23,7 +23,7 @@ public partial class MainWindow : Window
 
     readonly List<MonitorInfo> _monitors = Native.EnumerateMonitors();
     readonly List<Rectangle> _previewShapes = new();
-    readonly List<TextBlock> _previewLabels = new();
+    readonly List<Border> _previewLabels = new();
     System.Windows.Forms.NotifyIcon? _tray;
     byte[] _previewColors = Array.Empty<byte>();
 
@@ -206,19 +206,25 @@ public partial class MainWindow : Window
     /// mode sizes to the settings column and the wide width is remembered for the way
     /// back. Only the wide width is ever persisted.
     /// </summary>
+    const double WideMinWidth = 1317;
+
     void ApplyPreviewLayout()
     {
         if (_cfg.ShowPreview)
         {
             RightColumn.Visibility = Visibility.Visible;
             SizeToContent = SizeToContent.Manual;
-            MinWidth = 1317;
-            if (IsLoaded && WindowState == WindowState.Normal && ActualWidth < MinWidth)
-                Width = Math.Max(MinWidth, _wideWidth);
+            MinWidth = WideMinWidth;
+            if (IsLoaded && WindowState == WindowState.Normal && ActualWidth < WideMinWidth)
+                Width = Math.Max(WideMinWidth, _wideWidth);
         }
         else
         {
-            if (IsLoaded && WindowState == WindowState.Normal && ActualWidth >= MinWidth)
+            // capture only on the actual transition out of wide mode: a repeat call while
+            // already compact (Apply, Cancel, a language rebuild) would capture the
+            // compact width and the window would come back too narrow
+            if (RightColumn.Visibility == Visibility.Visible
+                && IsLoaded && WindowState == WindowState.Normal && ActualWidth >= WideMinWidth)
                 _wideWidth = ActualWidth;
             RightColumn.Visibility = Visibility.Collapsed;
             MinWidth = 0;
@@ -736,6 +742,10 @@ public partial class MainWindow : Window
         _previewShapes.Clear();
         _previewLabels.Clear();
 
+        // a soft theme-coloured outline keeps the grid readable while the cells are dark;
+        // the first LED is rung in the accent colour instead of shouting in white
+        var accent = TryFindResource("AccentFillColorDefaultBrush") as Brush ?? Brushes.White;
+
         var zones = _engine.Zones;
         for (int i = 0; i < zones.Length; i++)
         {
@@ -743,9 +753,9 @@ public partial class MainWindow : Window
             var r = new Rectangle
             {
                 Fill = Brushes.Black,
-                // outline every cell, so the grid reads evenly instead of only where
-                // neighbouring colours happen to differ
-                Stroke = first ? Brushes.White : new SolidColorBrush(Color.FromRgb(90, 90, 100)),
+                RadiusX = 3,
+                RadiusY = 3,
+                Stroke = first ? accent : Res("PanelStroke"),
                 StrokeThickness = first ? 2 : 1
             };
             PreviewCanvas.Children.Add(r);
@@ -756,17 +766,21 @@ public partial class MainWindow : Window
         for (int i = 0; i < zones.Length; i++)
         {
             if (i != 0 && (i + 1) % 10 != 0) continue;
-            var t = new TextBlock
+            var chip = new Border
             {
-                Text = (i + 1).ToString(),
-                FontSize = 10,
-                Foreground = Brushes.White,
                 Background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)),
-                Padding = new Thickness(2, 0, 2, 0),
-                Tag = i
+                CornerRadius = new CornerRadius(7),
+                Padding = new Thickness(5, 1, 5, 1),
+                Tag = i,
+                Child = new TextBlock
+                {
+                    Text = (i + 1).ToString(),
+                    FontSize = 10,
+                    Foreground = Brushes.White
+                }
             };
-            PreviewCanvas.Children.Add(t);
-            _previewLabels.Add(t);
+            PreviewCanvas.Children.Add(chip);
+            _previewLabels.Add(chip);
         }
 
         _previewColors = new byte[zones.Length * 3];
@@ -796,7 +810,7 @@ public partial class MainWindow : Window
 
             if (z.Side is Side.Top or Side.Bottom)
             {
-                r.Width = Math.Max(2, (z.X1 - z.X0) * cw - 1);
+                r.Width = Math.Max(2, (z.X1 - z.X0) * cw - 2);
                 r.Height = band;
                 Canvas.SetLeft(r, z.X0 * cw);
                 Canvas.SetTop(r, z.Side == Side.Top ? 0 : ch - band);
@@ -804,7 +818,7 @@ public partial class MainWindow : Window
             else
             {
                 r.Width = band;
-                r.Height = Math.Max(2, (z.Y1 - z.Y0) * ch - 1);
+                r.Height = Math.Max(2, (z.Y1 - z.Y0) * ch - 2);
                 Canvas.SetLeft(r, z.Side == Side.Left ? 0 : cw - band);
                 Canvas.SetTop(r, z.Y0 * ch);
             }
@@ -874,18 +888,18 @@ public partial class MainWindow : Window
         if (_cfg.CaptureMode == CaptureMode.Auto) activeNow += $" ({Loc.T("capture.autoSuffix")})";
         var snap = cap?.Metrics.Snapshot();
 
-        _statLabels[0].Text = Loc.T("stats.monitor");
-        _statLabels[1].Text = Loc.T("stats.method");
-        _statLabels[2].Text = Loc.T("stats.capture");
-        _statLabels[3].Text = Loc.T("stats.output");
-        _statLabels[4].Text = Loc.T("stats.port");
-        _statLabels[5].Text = Loc.T("stats.sources");
+        _statLabels[0].Text = Loc.T("stats.monitor") + ":";
+        _statLabels[1].Text = Loc.T("stats.method") + ":";
+        _statLabels[2].Text = Loc.T("stats.capture") + ":";
+        _statLabels[3].Text = Loc.T("stats.output") + ":";
+        _statLabels[4].Text = Loc.T("stats.port") + ":";
+        _statLabels[5].Text = Loc.T("stats.sources") + ":";
 
-        _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}  {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
+        _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
         _statValues[1].Text = activeNow;
-        _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1}   p50 {(snap?.P50Ms ?? 0):F1} ms   p99 {(snap?.P99Ms ?? 0):F1} ms";
-        _statValues[3].Text = $"{_engine.OutputFps:F1}   {Loc.T("stats.sent")} {_engine.FramesSent}   {Loc.T("stats.skipped")} {_engine.FramesSkipped}";
-        _statValues[4].Text = $"{_engine.DeviceStatus}   {Loc.T("stats.reconnects")} {_engine.Reconnects}";
+        _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1} fps; p50 {(snap?.P50Ms ?? 0):F1} ms; p99 {(snap?.P99Ms ?? 0):F1} ms";
+        _statValues[3].Text = $"{_engine.OutputFps:F1} fps; {Loc.T("stats.sent")} {_engine.FramesSent}; {Loc.T("stats.skipped")} {_engine.FramesSkipped}";
+        _statValues[4].Text = $"{_engine.DeviceStatus}; {Loc.T("stats.reconnects")} {_engine.Reconnects}";
         _statValues[5].Text = capLine;
 
         // the toggle applies live; the block only exists while the preview column does
@@ -933,14 +947,22 @@ public partial class MainWindow : Window
     {
         var icon = new TextBlock
         {
-            Text = "",
+            Text = "",
             FontFamily = (FontFamily)FindResource("Icons"),
             FontSize = 12,
             Foreground = Res("FgDim"),
             Margin = new Thickness(6, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = Cursors.Help,
-            ToolTip = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 320 }
+            // the popup inherits the icon font, which has no letters - be explicit
+            ToolTip = new TextBlock
+            {
+                Text = text,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 320,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 12
+            }
         };
         ToolTipService.SetInitialShowDelay(icon, 200);
         ToolTipService.SetShowDuration(icon, 60000);

@@ -28,7 +28,6 @@ public partial class MainWindow : Window
     byte[] _previewColors = Array.Empty<byte>();
 
     readonly List<UIElement> _pages = new();
-    readonly List<string> _pageTitles = new();
 
     readonly TextBlock[] _statLabels = new TextBlock[6];
     readonly TextBlock[] _statValues = new TextBlock[6];
@@ -59,6 +58,13 @@ public partial class MainWindow : Window
     /// live, but nothing reaches disk until Apply; Cancel copies this back.
     /// </summary>
     RimlightConfig _saved = null!;
+
+    /// <summary>
+    /// With "minimise to tray" on, the window's close button hides to the tray instead of
+    /// quitting - the usual behaviour for background utilities. Exiting for real happens
+    /// through the tray menu, which sets this first.
+    /// </summary>
+    bool _reallyClosing;
 
     public MainWindow()
     {
@@ -112,7 +118,6 @@ public partial class MainWindow : Window
         {
             int i = Nav.SelectedIndex;
             if (i < 0 || i >= _pages.Count) return;
-            PageTitle.Text = _pageTitles[i];
             PageHost.Content = _pages[i];
         };
         if (TryFindResource("AccentButtonStyle") is Style accent) ApplyButton.Style = accent;
@@ -157,8 +162,18 @@ public partial class MainWindow : Window
         ApplyButton.Click += (_, _) => ApplyChanges();
         CancelButton.Click += (_, _) => CancelChanges();
 
-        Closing += (_, _) =>
+        // a Windows shutdown must not be cancelled into the tray
+        Application.Current.SessionEnding += (_, _) => _reallyClosing = true;
+
+        Closing += (_, e) =>
         {
+            if (!_reallyClosing && _cfg.MinimizeToTray)
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+
             // Window geometry is not a setting the user is editing, so it persists on its
             // own - written onto the last applied config so pending edits stay discarded.
             SaveWindowGeometry();
@@ -214,9 +229,15 @@ public partial class MainWindow : Window
         {
             RightColumn.Visibility = Visibility.Visible;
             SizeToContent = SizeToContent.Manual;
-            MinWidth = WideMinWidth;
-            if (IsLoaded && WindowState == WindowState.Normal && ActualWidth < WideMinWidth)
+            if (IsLoaded && WindowState == WindowState.Normal)
+            {
+                // in compact mode the real size came from SizeToContent, not the Width
+                // property - which may still hold the wide value, making a plain
+                // assignment a no-op; sync it to reality first so the second set resizes
+                Width = ActualWidth;
                 Width = Math.Max(WideMinWidth, _wideWidth);
+            }
+            MinWidth = WideMinWidth;
         }
         else
         {
@@ -291,7 +312,7 @@ public partial class MainWindow : Window
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add(Loc.T("tray.show"), null, (_, _) => RestoreFromTray());
-        menu.Items.Add(Loc.T("main.exit"), null, (_, _) => Close());
+        menu.Items.Add(Loc.T("main.exit"), null, (_, _) => { _reallyClosing = true; Close(); });
         _tray.ContextMenuStrip = menu;
         _tray.DoubleClick += (_, _) => RestoreFromTray();
     }
@@ -312,8 +333,6 @@ public partial class MainWindow : Window
         _rebuildingUi = true;
         Nav.Items.Clear();
         _pages.Clear();
-        _pageTitles.Clear();
-        PreviewCaption.Text = Loc.T("preview.caption");
         PreviewToggle.Content = Loc.T("nav.preview");
         PreviewToggle.IsChecked = _cfg.ShowPreview;    // guarded by _rebuildingUi
 
@@ -333,11 +352,6 @@ public partial class MainWindow : Window
             };
             panel.Children.Add(Labeled(Loc.T("main.language"), _langBox, Loc.T("main.language.note")));
 
-            panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v,
-                Loc.T("main.boost.note")));
-            panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v => _cfg.ShowStats = v,
-                Loc.T("main.stats.note")));
-
             panel.Children.Add(Check(Loc.T("main.startmin"), _cfg.StartMinimized, v => _cfg.StartMinimized = v));
             panel.Children.Add(Check(Loc.T("main.tray"), _cfg.MinimizeToTray, v =>
             {
@@ -354,6 +368,11 @@ public partial class MainWindow : Window
                 Autostart.Set(v);
             }));
 
+            panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v,
+                Loc.T("main.boost.note")));
+            panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v => _cfg.ShowStats = v,
+                Loc.T("main.stats.note")));
+
             panel.Children.Add(Check(Loc.T("main.log"), _cfg.WriteLog, v =>
             {
                 _cfg.WriteLog = v;
@@ -363,13 +382,10 @@ public partial class MainWindow : Window
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
             var exportBtn = new Button { Content = Loc.T("main.export"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
             exportBtn.Click += (_, _) => ExportConfig();
-            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
+            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(8, 4, 8, 4) };
             importBtn.Click += (_, _) => ImportConfig();
-            var exitBtn = new Button { Content = Loc.T("main.exit"), Padding = new Thickness(12, 4, 12, 4) };
-            exitBtn.Click += (_, _) => Close();
             row.Children.Add(exportBtn);
             row.Children.Add(importBtn);
-            row.Children.Add(exitBtn);
             panel.Children.Add(row);
 
             var pathText = Text("", dim: true, size: 11);
@@ -985,7 +1001,6 @@ public partial class MainWindow : Window
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = body
         });
-        _pageTitles.Add(title);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(new TextBlock
@@ -1076,7 +1091,10 @@ public partial class MainWindow : Window
             Content = label,
             IsChecked = value,
             Foreground = Res("Fg"),
-            Margin = new Thickness(0, 3, 0, 3)
+            Margin = new Thickness(0, 3, 0, 3),
+            // the Fluent style reserves 120px; a short label would push its help icon
+            // far to the right of the text
+            MinWidth = 0
         };
         cb.Checked += (_, _) => { if (!_rebuildingUi) { onChange(true); MarkDirty(); } };
         cb.Unchecked += (_, _) => { if (!_rebuildingUi) { onChange(false); MarkDirty(); } };

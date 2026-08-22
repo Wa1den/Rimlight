@@ -18,7 +18,7 @@ public static class Loc
     /// the built-ins so translations can be corrected - but that also meant an old file
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it.
     /// </summary>
-    const string Version = "6";
+    const string Version = "7";
 
     public static string Language { get; private set; } = "ru";
 
@@ -214,8 +214,6 @@ public static class Loc
         ["power.lock"] = "блокировке компьютера",
         ["power.suspend"] = "уходе в сон",
 
-        ["preview.caption"] = "Превью зон — порядок ленты и цвета ровно те, что уходят на устройство. Номера каждые 10 диодов, первый обведён.",
-
         ["stats.monitor"] = "монитор",
         ["stats.method"] = "метод",
         ["stats.capture"] = "захват",
@@ -329,8 +327,6 @@ public static class Loc
         ["power.display"] = "display off",
         ["power.lock"] = "workstation lock",
         ["power.suspend"] = "sleep",
-
-        ["preview.caption"] = "Zone preview — strip order and exactly the colours sent to the device. Numbered every 10 LEDs, the first one outlined.",
 
         ["stats.monitor"] = "monitor",
         ["stats.method"] = "method",

@@ -39,26 +39,22 @@
         <!-- settings page for the selected section -->
         <Grid Grid.Column="1" Margin="0,12,12,12">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock x:Name="PageTitle" FontSize="24" FontWeight="SemiBold"
-                       Foreground="{StaticResource Fg}" Margin="2,0,0,12"/>
-
-            <ContentControl x:Name="PageHost" Grid.Row="1"/>
+            <ContentControl x:Name="PageHost" Grid.Row="0"/>
 
             <!-- warnings live with the settings, not the preview, so hiding the preview
                  cannot hide a dead port -->
-            <Border x:Name="WarnCard" Grid.Row="2" Style="{StaticResource Card}"
+            <Border x:Name="WarnCard" Grid.Row="1" Style="{StaticResource Card}"
                     Padding="12" Margin="0,10,0,0" Visibility="Collapsed">
                 <TextBlock x:Name="WarnText" Foreground="{StaticResource Warn}" FontSize="12"
                            TextWrapping="Wrap"/>
             </Border>
 
-            <Border x:Name="DirtyBar" Grid.Row="3" Style="{StaticResource Card}"
+            <Border x:Name="DirtyBar" Grid.Row="2" Style="{StaticResource Card}"
                     Padding="12" Margin="0,10,0,0" Visibility="Collapsed">
                 <DockPanel>
                     <Button x:Name="CancelButton" DockPanel.Dock="Right" Padding="14,6" Margin="8,0,0,0"/>
@@ -77,15 +73,7 @@
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Style="{StaticResource Card}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock x:Name="PreviewCaption" Grid.Row="0" Foreground="{StaticResource FgDim}"
-                               FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap"/>
-                    <Canvas x:Name="PreviewCanvas" Grid.Row="1" ClipToBounds="True"/>
-                </Grid>
+                <Canvas x:Name="PreviewCanvas" ClipToBounds="True"/>
             </Border>
 
             <Border x:Name="StatsCard" Grid.Row="1" Style="{StaticResource Card}" Margin="0,10,0,0">

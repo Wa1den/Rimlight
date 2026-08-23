@@ -18,24 +18,23 @@
 
 ## Как это работает
 
-**Захват — лестницей из трёх методов.** Основной путь — Desktop Duplication; при
-прекращении потока кадров источник переключается на Windows Graphics Capture, затем на
-GDI, и возвращается обратно, когда быстрый путь оживает. Смена источника происходит
-автоматически и видна в строке состояния.
+**Резервные методы захвата.** Основной метод — Desktop Duplication. Если он перестаёт
+выдавать кадры, источник переключается на Windows Graphics Capture, затем на GDI, и
+возвращается к предыдущему, когда тот снова выдаёт кадры. Текущий источник показан в
+строке состояния.
 
-**Простой отличается от сбоя.** Неподвижный экран не производит кадров — это штатное
-состояние, а не повод для переключения. Логика различает «кадров нет, потому что картинка
-не меняется» и «кадров нет, потому что метод перестал работать»; спорные случаи
-разрешаются дешёвым контрольным снимком через GDI.
+**Различение простоя и сбоя.** Неподвижный экран не производит новых кадров, и это
+нормальная ситуация, не требующая переключения. Логика разделяет два случая: кадров нет,
+потому что изображение не меняется, и кадров нет, потому что метод перестал работать. В
+неоднозначных случаях выполняется контрольный снимок через GDI.
 
-**Обработка кадра — на видеокарте.** Кадр уменьшается аппаратной генерацией мип-уровней,
+**Обработка кадра на видеокарте.** Кадр уменьшается аппаратной генерацией мип-уровней,
 результат читается через кольцо промежуточных буферов без блокировки: по шине передаётся
-около 4 КБ на кадр вместо 20 МБ, и конвейер не останавливается, даже когда видеокарта
-занята игрой.
+около 4 КБ на кадр вместо 20 МБ, а чтение не ожидает освобождения видеокарты.
 
-**Цвет считается в линейном пространстве.** Усреднение, баланс белого, насыщенность и
-сглаживание выполняются над линейными значениями, гамма-коррекция применяется в конце —
-без этого усреднение занижает яркость на контрастных сценах.
+**Расчёт цвета в линейном пространстве.** Усреднение, баланс белого, насыщенность и
+сглаживание выполняются над линейными значениями, гамма-коррекция применяется в конце.
+Без этого усреднение занижает яркость на контрастных сценах.
 
 ## Что нужно
 
@@ -98,21 +97,22 @@ JSON-файлы, их можно править и дополнять.
 ## Захват под нагрузкой GPU
 
 Desktop Duplication и Windows Graphics Capture читают результат работы композитора
-Windows (DWM). Композиция — обычная задача на видеокарте, и при полной загрузке GPU игрой
-ей может не доставаться времени: оба метода тогда перестают выдавать кадры, оставаясь
-формально исправными. Симптомы — рост p99 интервала между кадрами и частые переходы на
-GDI в строке состояния.
+Windows (DWM). Композиция выполняется на видеокарте, и при полной загрузке GPU игрой
+композитору может не хватать времени на выполнение. В этом случае оба метода перестают
+выдавать кадры, при этом ошибок не возникает. Это проявляется как рост p99 интервала
+между кадрами и частые переключения на GDI в строке состояния.
 
 На частоту композиции влияют два фактора:
 
 - **Планирование GPU с аппаратным ускорением** (Параметры → Система → Дисплей → Графика →
-  Настройки графики по умолчанию). При включённом планировании распределением задач
-  занимается сама видеокарта, и композитор конкурирует с кадрами игры на общих
-  основаниях; при выключенном — планировщик Windows, который вклинивает его задачи
-  охотнее. Наблюдение с одной конфигурации (RTX 4080, 3440×1440, 165 Гц): при выключенной
-  настройке захват стабилен при загрузке GPU 97–98%. Генерация кадров DLSS требует
-  включённого аппаратного планирования, поэтому размен доступен не всегда.
-- **Запас по загрузке GPU.** Ограничение частоты кадров игры ниже фактического потолка
+  Настройки графики по умолчанию). При включённой настройке распределением задач
+  занимается видеокарта, и задачи композитора конкурируют с кадрами игры на общих
+  основаниях. При выключенной распределением занимается планировщик Windows, который
+  выделяет им время чаще. Измерение на одной конфигурации (RTX 4080, 3440×1440, 165 Гц):
+  при выключенной настройке захват сохраняет стабильность при загрузке GPU 97–98%.
+  Генерация кадров DLSS требует включённой настройки, поэтому такой вариант доступен не
+  всегда.
+- **Запас по загрузке GPU.** Ограничение частоты кадров игры ниже фактически достижимой
   оставляет композитору время независимо от планировщика.
 
 ## Структура репозитория
@@ -173,22 +173,22 @@ faster and more flexible screen capture.
 
 ## How it works
 
-**Capture is a ladder of three methods.** Desktop Duplication is the primary path; when
-frames stop arriving the source switches to Windows Graphics Capture, then to GDI, and
-returns once the fast path recovers. Switching is automatic and visible in the status area.
+**Fallback capture methods.** Desktop Duplication is the primary method. If it stops
+delivering frames, the source switches to Windows Graphics Capture and then to GDI, and
+returns to the previous method once that one delivers frames again. The current source is
+shown in the status area.
 
-**Idle is distinguished from failure.** A still screen produces no frames — that is a
-normal state, not a reason to switch. The logic separates "no frames because nothing
-changes" from "no frames because the method stopped working"; ambiguous cases are resolved
-with a cheap GDI probe.
+**Distinguishing idle from failure.** A still screen produces no new frames, which is
+normal and does not require switching. The logic separates two cases: no frames because
+the image is not changing, and no frames because the method stopped working. Ambiguous
+cases are resolved with a GDI probe.
 
-**Frame processing stays on the GPU.** Frames are downscaled with hardware mip generation
-and read back through a non-blocking ring of staging buffers: about 4 KB per frame crosses
-the bus instead of 20 MB, and the pipeline keeps moving even while the GPU is busy with a
-game.
+**Frame processing on the GPU.** Frames are downscaled with hardware mip generation and
+read back through a non-blocking ring of staging buffers: about 4 KB per frame crosses the
+bus instead of 20 MB, and the readback does not wait for the GPU to become free.
 
 **Colour maths in linear space.** Averaging, white balance, saturation and smoothing are
-done on linear values; gamma encoding is applied at the end — otherwise averaging
+done on linear values; gamma encoding is applied at the end. Without this, averaging
 understates brightness on high-contrast scenes.
 
 ## Requirements
@@ -249,22 +249,22 @@ are plain JSON files and can be edited or added.
 ## Capture under GPU load
 
 Desktop Duplication and Windows Graphics Capture both read the output of the Windows
-compositor (DWM). Composition is ordinary GPU work, and when a game saturates the GPU it
-can be starved of time: both methods then stop delivering frames while remaining formally
-healthy. The symptoms are a growing p99 frame interval and frequent GDI fallbacks in the
-status area.
+compositor (DWM). Composition runs on the GPU, and when a game fully loads the GPU the
+compositor may not get enough time to run. Both methods then stop delivering frames, and
+no error is reported. This appears as a growing p99 frame interval and frequent switches
+to GDI in the status area.
 
-Two factors affect how often composition gets to run:
+Two factors affect how often composition runs:
 
 - **Hardware-accelerated GPU scheduling** (Settings → System → Display → Graphics →
-  Default graphics settings). With it enabled, work scheduling is handled by the GPU
-  itself and the compositor competes with game frames on equal terms; with it disabled,
-  the Windows scheduler slots its work in more readily. Observed on one configuration
-  (RTX 4080, 3440×1440, 165 Hz): with the setting off, capture stays stable at 97–98% GPU
-  load. DLSS Frame Generation requires the setting enabled, so this trade-off is not
-  always available.
-- **GPU headroom.** Capping the game's frame rate below its actual ceiling leaves the
-  compositor time regardless of the scheduler.
+  Default graphics settings). With the setting enabled, work scheduling is handled by the
+  GPU, and compositor tasks compete with game frames on equal terms. With it disabled,
+  scheduling is handled by Windows, which allocates time to them more often. Measured on
+  one configuration (RTX 4080, 3440×1440, 165 Hz): with the setting disabled, capture
+  remains stable at 97–98% GPU load. DLSS Frame Generation requires the setting enabled,
+  so this option is not always available.
+- **GPU headroom.** Capping the game's frame rate below the rate the GPU can sustain
+  leaves time for the compositor regardless of the scheduler.
 
 ## Repository layout
 

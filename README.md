@@ -13,29 +13,29 @@
 [Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight заменяет
 только программу на компьютере и работает с той же прошивкой без изменений.
 
-Проект написан на замену [Prismatik](https://github.com/psieg/Lightpack), у которого в
-играх регулярно гасла подсветка. Разбор причин этого определил основную часть архитектуры.
+Написан на замену [Prismatik](https://github.com/psieg/Lightpack) — ради скорости и
+гибкости захвата изображения.
 
-## Отличия от Prismatik
+## Как это работает
 
-**Резервные методы захвата.** Prismatik использует один метод захвата и перестаёт
-обновлять подсветку, когда тот прекращает выдавать кадры. Rimlight по умолчанию работает
-через Desktop Duplication, а при отсутствии кадров переключается на Windows Graphics
-Capture и затем на GDI, поэтому подсветка продолжает обновляться.
+**Захват — лестницей из трёх методов.** Основной путь — Desktop Duplication; при
+прекращении потока кадров источник переключается на Windows Graphics Capture, затем на
+GDI, и возвращается обратно, когда быстрый путь оживает. Смена источника происходит
+автоматически и видна в строке состояния.
 
-**Различение простоя и сбоя.** Неподвижный экран не производит новых кадров, и это
-нормальная ситуация. Основная задача логики переключения — отличать её от действительно
-неработающего метода захвата: ошибка приводит к лишним сменам источника и заметна по
-подёргиванию курсора мыши.
+**Простой отличается от сбоя.** Неподвижный экран не производит кадров — это штатное
+состояние, а не повод для переключения. Логика различает «кадров нет, потому что картинка
+не меняется» и «кадров нет, потому что метод перестал работать»; спорные случаи
+разрешаются дешёвым контрольным снимком через GDI.
 
-**Обработка кадра на видеокарте.** Кадр уменьшается аппаратной генерацией мип-уровней, а
+**Обработка кадра — на видеокарте.** Кадр уменьшается аппаратной генерацией мип-уровней,
 результат читается через кольцо промежуточных буферов без блокировки: по шине передаётся
-около 4 КБ на кадр вместо 20 МБ. Блокирующее чтение ждёт в очереди за работой игры и под
-нагрузкой занимает секунды.
+около 4 КБ на кадр вместо 20 МБ, и конвейер не останавливается, даже когда видеокарта
+занята игрой.
 
-**Расчёт цвета в линейном пространстве.** Усреднение, баланс белого, насыщенность и
-сглаживание выполняются над линейными значениями, гамма-коррекция применяется в конце.
-Без этого яркие сцены выглядят тусклее, чем должны.
+**Цвет считается в линейном пространстве.** Усреднение, баланс белого, насыщенность и
+сглаживание выполняются над линейными значениями, гамма-коррекция применяется в конце —
+без этого усреднение занижает яркость на контрастных сценах.
 
 ## Что нужно
 
@@ -95,21 +95,25 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 Настройки, лог и файлы переводов хранятся в `%APPDATA%\Rimlight\`. Переводы — обычные
 JSON-файлы, их можно править и дополнять.
 
-## Проблемы захвата в играх
+## Захват под нагрузкой GPU
 
-В первую очередь проверить настройку **«Планирование графического процессора с аппаратным
-ускорением»**: Параметры → Система → Дисплей → Графика → Настройки графики по умолчанию.
+Desktop Duplication и Windows Graphics Capture читают результат работы композитора
+Windows (DWM). Композиция — обычная задача на видеокарте, и при полной загрузке GPU игрой
+ей может не доставаться времени: оба метода тогда перестают выдавать кадры, оставаясь
+формально исправными. Симптомы — рост p99 интервала между кадрами и частые переходы на
+GDI в строке состояния.
 
-Когда она включена, требовательная игра может загрузить видеокарту настолько, что
-композитор Windows перестаёт успевать. Desktop Duplication и Windows Graphics Capture
-читают результат композиции, поэтому остаются без кадров: появляются длинные паузы,
-переходы на GDI, иногда кадры пропадают полностью. На машине, где велась разработка
-(RTX 4080, 3440×1440, 165 Гц), отключение настройки устранило проблему: видеокарта
-загружена на 97–98% без ограничения частоты кадров, захват при этом стабилен.
+На частоту композиции влияют два фактора:
 
-Генерация кадров DLSS работает только при включённой настройке. В этом случае вместо её
-отключения можно ограничить частоту кадров в игре чуть ниже возможностей видеокарты —
-эффект тот же.
+- **Планирование GPU с аппаратным ускорением** (Параметры → Система → Дисплей → Графика →
+  Настройки графики по умолчанию). При включённом планировании распределением задач
+  занимается сама видеокарта, и композитор конкурирует с кадрами игры на общих
+  основаниях; при выключенном — планировщик Windows, который вклинивает его задачи
+  охотнее. Наблюдение с одной конфигурации (RTX 4080, 3440×1440, 165 Гц): при выключенной
+  настройке захват стабилен при загрузке GPU 97–98%. Генерация кадров DLSS требует
+  включённого аппаратного планирования, поэтому размен доступен не всегда.
+- **Запас по загрузке GPU.** Ограничение частоты кадров игры ниже фактического потолка
+  оставляет композитору время независимо от планировщика.
 
 ## Структура репозитория
 
@@ -164,30 +168,28 @@ The hardware side and the original idea come from AlexGyver's
 [Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight replaces only
 the PC program and works with the same firmware unchanged.
 
-The project was written to replace [Prismatik](https://github.com/psieg/Lightpack), which
-regularly went dark during games. Working out the causes of that shaped most of the
-architecture.
+Written as a replacement for [Prismatik](https://github.com/psieg/Lightpack), aiming at
+faster and more flexible screen capture.
 
-## Differences from Prismatik
+## How it works
 
-**Fallback capture methods.** Prismatik uses a single capture method and stops updating the
-lights when it stops delivering frames. Rimlight uses Desktop Duplication by default and,
-when frames stop arriving, switches to Windows Graphics Capture and then to GDI, so the
-lighting keeps updating.
+**Capture is a ladder of three methods.** Desktop Duplication is the primary path; when
+frames stop arriving the source switches to Windows Graphics Capture, then to GDI, and
+returns once the fast path recovers. Switching is automatic and visible in the status area.
 
-**Telling idle from failure.** A still screen produces no new frames, which is normal. The
-main job of the switching logic is to distinguish that from a capture method that has
-actually stopped working: getting it wrong causes unnecessary source switches, visible as
-mouse cursor stutter.
+**Idle is distinguished from failure.** A still screen produces no frames — that is a
+normal state, not a reason to switch. The logic separates "no frames because nothing
+changes" from "no frames because the method stopped working"; ambiguous cases are resolved
+with a cheap GDI probe.
 
-**Frame processing on the GPU.** The frame is downscaled with hardware mip generation and
-the result is read back through a ring of staging buffers without blocking: about 4 KB per
-frame crosses the bus instead of 20 MB. A blocking readback waits in line behind the game's
-GPU work and takes seconds under load.
+**Frame processing stays on the GPU.** Frames are downscaled with hardware mip generation
+and read back through a non-blocking ring of staging buffers: about 4 KB per frame crosses
+the bus instead of 20 MB, and the pipeline keeps moving even while the GPU is busy with a
+game.
 
 **Colour maths in linear space.** Averaging, white balance, saturation and smoothing are
-done on linear values; gamma encoding is applied at the end. Without this, bright scenes
-look dimmer than they should.
+done on linear values; gamma encoding is applied at the end — otherwise averaging
+understates brightness on high-contrast scenes.
 
 ## Requirements
 
@@ -244,21 +246,25 @@ number of bytes regardless of the header, so a mismatch shifts the picture along
 Settings, the log and translation files are stored in `%APPDATA%\Rimlight\`. Translations
 are plain JSON files and can be edited or added.
 
-## Capture problems in games
+## Capture under GPU load
 
-Check **Hardware-accelerated GPU scheduling** first: Settings → System → Display → Graphics
-→ Default graphics settings.
+Desktop Duplication and Windows Graphics Capture both read the output of the Windows
+compositor (DWM). Composition is ordinary GPU work, and when a game saturates the GPU it
+can be starved of time: both methods then stop delivering frames while remaining formally
+healthy. The symptoms are a growing p99 frame interval and frequent GDI fallbacks in the
+status area.
 
-With it enabled, a demanding game can load the GPU to the point where the Windows
-compositor cannot keep up. Desktop Duplication and Windows Graphics Capture read the
-composition result, so they receive no frames: long gaps, fallbacks to GDI, sometimes no
-frames at all. On the development machine (RTX 4080, 3440×1440, 165 Hz), disabling the
-setting fixed the problem: the GPU runs at 97–98% with no frame cap and capture stays
-stable.
+Two factors affect how often composition gets to run:
 
-DLSS Frame Generation only works with the setting enabled. In that case, instead of
-disabling it, cap the game's frame rate slightly below what the GPU can deliver — the
-effect is the same.
+- **Hardware-accelerated GPU scheduling** (Settings → System → Display → Graphics →
+  Default graphics settings). With it enabled, work scheduling is handled by the GPU
+  itself and the compositor competes with game frames on equal terms; with it disabled,
+  the Windows scheduler slots its work in more readily. Observed on one configuration
+  (RTX 4080, 3440×1440, 165 Hz): with the setting off, capture stays stable at 97–98% GPU
+  load. DLSS Frame Generation requires the setting enabled, so this trade-off is not
+  always available.
+- **GPU headroom.** Capping the game's frame rate below its actual ceiling leaves the
+  compositor time regardless of the scheduler.
 
 ## Repository layout
 

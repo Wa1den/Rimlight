@@ -6,3 +6,6 @@ dist/
 # runtime artefacts
 snapshots/
 *.log
+
+# заметки для Claude Code, живут только локально
+CLAUDE.md

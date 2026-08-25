@@ -15,13 +15,15 @@
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
+            <!-- the width is repeated as MainWindow.PageWidth, which adds up the compact
+                 window width; the two have to stay in step -->
             <ColumnDefinition Width="430"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!-- left rail: the section list, sized by its longest caption; the preview
              toggle sits at the bottom because the preview belongs to no one section -->
-        <DockPanel Grid.Column="0" Margin="6,12,6,12">
+        <DockPanel x:Name="Rail" Grid.Column="0" Margin="6,12,6,12">
             <CheckBox x:Name="PreviewToggle" DockPanel.Dock="Bottom" Margin="12,12,8,2"
                       Foreground="{StaticResource Fg}"/>
             <ListBox x:Name="Nav" Background="Transparent" BorderThickness="0"

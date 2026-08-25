@@ -25,6 +25,7 @@ public sealed class RimlightEngine : IDisposable
     readonly AdalightDevice _device = new();
     readonly ColorPipeline _pipeline = new();
     readonly FramePublisher _publisher = new();
+    readonly CropDetector _crop = new();
 
     HybridBackend? _capture;
     Thread? _outputThread;
@@ -35,6 +36,13 @@ public sealed class RimlightEngine : IDisposable
 
     RimlightConfig _cfg = new();
     LedZone[] _zones = Array.Empty<LedZone>();
+
+    /// <summary>
+    /// The zones actually read from the frame. Identical to <see cref="_zones"/> until the
+    /// crop detector finds bars; keeping the two apart means the preview and the layout
+    /// overlay go on showing where the LEDs physically are.
+    /// </summary>
+    LedZone[] _sampleZones = Array.Empty<LedZone>();
     MonitorInfo? _monitor;
 
     byte[] _image = Array.Empty<byte>();
@@ -57,6 +65,9 @@ public sealed class RimlightEngine : IDisposable
     public long FramesPublished => _publisher.Published;
     public HybridBackend? Capture => _capture;
     public double OutputFps { get; private set; }
+
+    /// <summary>Where the picture was last found inside the frame, for the settings panel.</summary>
+    public CropRect Crop => _crop.Rect;
 
     /// <summary>Bumped whenever the zones are rebuilt, so the UI can refresh its preview.</summary>
     public int LayoutVersion { get; private set; }
@@ -114,7 +125,20 @@ public sealed class RimlightEngine : IDisposable
             _device.Open(_cfg.PortName, _cfg.BaudRate, _zones.Length, waitBootloader: false);
         }
 
+        RemapZones();
         LayoutVersion++;
+    }
+
+    /// <summary>
+    /// Rebuilds the sampling rectangles from the strip geometry and the current crop. Called
+    /// when either changes, not per frame - the crop settles and then stays put for minutes.
+    /// </summary>
+    void RemapZones()
+    {
+        if (_sampleZones.Length != _zones.Length) _sampleZones = new LedZone[_zones.Length];
+
+        if (_crop.Rect.IsFull) Array.Copy(_zones, _sampleZones, _zones.Length);
+        else CropMapper.Apply(_zones, _sampleZones, _crop.Rect, _cfg.CropStretch);
     }
 
     public MonitorInfo? Monitor => _monitor;
@@ -137,6 +161,8 @@ public sealed class RimlightEngine : IDisposable
         _output = new byte[_zones.Length * 3];
         _preview = new byte[_zones.Length * 3];
         _pipeline.Reset(_zones.Length);
+        _crop.Reset();
+        RemapZones();
 
         _capture = NewCapture(cfg);
         _capture.Start(_monitor);
@@ -167,6 +193,7 @@ public sealed class RimlightEngine : IDisposable
         var fpsWindow = Stopwatch.StartNew();
         int framesThisWindow = 0;
         double lastMs = 0;
+        double lastCropMs = 0;
         long lastReconnectAttempt = 0;
         bool everSampled = false;
 
@@ -183,6 +210,14 @@ public sealed class RimlightEngine : IDisposable
             {
                 _relayout = false;
                 RebuildZones();
+            }
+
+            // Switching the detector off has to reach the zones even on a still screen,
+            // where no further frame is going to arrive to carry the change.
+            if (!_cfg.AdaptiveCrop && !_crop.Rect.IsFull)
+            {
+                _crop.Reset();
+                RemapZones();
             }
 
             // Followed live rather than only at startup, so the checkbox takes effect
@@ -208,7 +243,18 @@ public sealed class RimlightEngine : IDisposable
                 // downstream has its own zones and its own correction to apply.
                 if (_cfg.PublishFrames) _publisher.Publish(_image, w, h, stride, _monitor);
 
-                ZoneSampler.Sample(_image, w, h, stride, _zones, _sampled);
+                // Before sampling, and only on a frame that is actually new: the detector
+                // measures the picture, and its hold time counts real elapsed time.
+                if (_cfg.AdaptiveCrop)
+                {
+                    double cropDt = startMs - lastCropMs;
+                    lastCropMs = startMs;
+                    if (_crop.Update(_image, w, h, stride, _cfg.ToCropSettings(),
+                                     cropDt <= 0 || cropDt > 1000 ? periodMs : cropDt))
+                        RemapZones();
+                }
+
+                ZoneSampler.Sample(_image, w, h, stride, _sampleZones, _sampled);
                 everSampled = true;
                 framesThisWindow++;
             }

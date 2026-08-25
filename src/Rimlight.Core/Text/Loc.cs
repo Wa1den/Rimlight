@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "11";
+    const string Version = "13";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -241,6 +241,7 @@ public static class Loc
         ["tab.main"] = "Основное",
         ["tab.device"] = "Устройство",
         ["tab.layout"] = "Раскладка",
+        ["tab.crop"] = "Кадрирование",
         ["tab.color"] = "Цвет",
         ["tab.capture"] = "Захват",
         ["tab.power"] = "Питание",
@@ -291,6 +292,31 @@ public static class Loc
         ["layout.depth"] = "Глубина зоны, % ширины",
         ["layout.note"] = "Отступ зон от края экрана: сопоставляет превью с реальным положением диодов. Проценты считаются от ширины экрана.",
         ["layout.total"] = "Всего диодов: {0}",
+
+        ["crop.head"] = "Фильм шире экрана идёт с чёрными полосами сверху и снизу, и диоды вдоль них не светят. Программа находит границы картинки и переносит зоны выборки внутрь неё.",
+        ["crop.enable"] = "Адаптивное кадрирование",
+        ["crop.enable.note"] = "Пока полосы есть, зоны выборки стоят внутри картинки; когда пропадают — возвращаются к краям экрана.",
+        ["crop.vertical"] = "Полосы сверху и снизу",
+        ["crop.vertical.note"] = "Фильм 2.35:1 или 21:9 на экране 16:9.",
+        ["crop.horizontal"] = "Полосы слева и справа",
+        ["crop.horizontal.note"] = "Видео 4:3 на широком экране и вертикальные ролики.",
+        ["crop.stretch"] = "Растягивать картинку на всю ленту",
+        ["crop.stretch.note"] = "Картинка раскладывается по всему кольцу, тёмных участков на ленте не остаётся. Если выключить, зоны только сходят с полос, оставаясь напротив своих мест на экране.",
+        ["crop.min"] = "Минимальная полоса, % стороны",
+        ["crop.min.note"] = "Полосы тоньше этой доли принимаются за тёмный край кадра.",
+        ["crop.max"] = "Максимальная полоса, % стороны",
+        ["crop.max.note"] = "Ограничивает глубину переноса, чтобы тёмная сцена не срезала картинку. У фильма 2.39:1 на экране 16:9 полоса — около 17% высоты.",
+        ["crop.level"] = "Порог черноты",
+        ["crop.level.note"] = "Значение канала, ниже которого пиксель считается чёрным. При нуле мешает шум сжатия, при высоком за полосу принимается тёмный край картинки.",
+        ["crop.overlook"] = "Пропускать помехи, % стороны",
+        ["crop.overlook.note"] = "Запас на субтитры и панель плеера, которые рисуются поверх полосы. Больше — держится увереннее, слишком много — захватывает край картинки.",
+        ["crop.hold"] = "Задержка подтверждения, с",
+        ["crop.hold.note"] = "Новые границы применяются, только если продержались столько времени. Больше — устойчивее к тёмным сценам, меньше — быстрее отклик.",
+        ["crop.status.off"] = "Поиск полос выключен.",
+        ["crop.status.none"] = "Полосы не найдены.",
+        ["crop.status.v"] = "Найдено: сверху и снизу {0:0.0}%.",
+        ["crop.status.h"] = "Найдено: слева и справа {0:0.0}%.",
+        ["crop.status.both"] = "Найдено: сверху и снизу {0:0.0}%, слева и справа {1:0.0}%.",
 
         ["color.brightness"] = "Максимальная яркость",
         ["color.minluma"] = "Порог темноты",
@@ -363,6 +389,7 @@ public static class Loc
         ["tab.main"] = "General",
         ["tab.device"] = "Device",
         ["tab.layout"] = "Layout",
+        ["tab.crop"] = "Cropping",
         ["tab.color"] = "Colour",
         ["tab.capture"] = "Capture",
         ["tab.power"] = "Power",
@@ -413,6 +440,31 @@ public static class Loc
         ["layout.depth"] = "Zone depth, % of width",
         ["layout.note"] = "Margin between the zones and the screen edge, used to align the preview with the physical LED positions. Percentages are of screen width.",
         ["layout.total"] = "Total LEDs: {0}",
+
+        ["crop.head"] = "Material wider than the screen comes with black bars above and below it, and the LEDs along them do not light. The program finds the edges of the picture and moves the sampling zones inside them.",
+        ["crop.enable"] = "Adaptive cropping",
+        ["crop.enable.note"] = "While bars are present the sampling zones sit inside the picture; when the bars go, the zones return to the edges of the screen.",
+        ["crop.vertical"] = "Bars above and below",
+        ["crop.vertical.note"] = "2.35:1 or 21:9 material on a 16:9 screen.",
+        ["crop.horizontal"] = "Bars left and right",
+        ["crop.horizontal.note"] = "4:3 material on a wide screen, and vertical video.",
+        ["crop.stretch"] = "Spread the picture over the whole strip",
+        ["crop.stretch.note"] = "The picture is laid out across the entire ring, leaving no part of the strip dark. With this off the zones only step clear of the bars, staying opposite their own places on the screen.",
+        ["crop.min"] = "Smallest bar, % of the side",
+        ["crop.min.note"] = "Bars thinner than this are taken for a dark edge of the frame.",
+        ["crop.max"] = "Largest bar, % of the side",
+        ["crop.max.note"] = "Caps how far the sampling may move in, so a dark scene cannot cut the picture off. A 2.39:1 film on a 16:9 screen puts about 17% of the height in each bar.",
+        ["crop.level"] = "Black threshold",
+        ["crop.level.note"] = "The channel value below which a pixel counts as black. At zero the speckle of compression gets in the way; set too high, a dark edge of the picture is taken for bar.",
+        ["crop.overlook"] = "Step over interference, % of the side",
+        ["crop.overlook.note"] = "Margin for subtitles and player controls, which are drawn over the bar. Higher holds more reliably, too high takes in the edge of the picture.",
+        ["crop.hold"] = "Confirmation delay, s",
+        ["crop.hold.note"] = "New edges are acted on only once they have held for this long. Higher stands up to dark scenes better, lower responds sooner.",
+        ["crop.status.off"] = "Bar detection off.",
+        ["crop.status.none"] = "No bars found.",
+        ["crop.status.v"] = "Found: {0:0.0}% top and bottom.",
+        ["crop.status.h"] = "Found: {0:0.0}% left and right.",
+        ["crop.status.both"] = "Found: {0:0.0}% top and bottom, {1:0.0}% left and right.",
 
         ["color.brightness"] = "Maximum brightness",
         ["color.minluma"] = "Darkness threshold",

@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     TextBlock _totalText = null!;
     StackPanel _offsetHost = null!;
     TextBlock _countNote = null!;
+    TextBlock _cropStatus = null!;
     LayoutOverlay? _overlay;
     Button _overlayButton = null!;
     int _overlayLayoutVersion = -1;
@@ -540,6 +541,49 @@ public partial class MainWindow : Window
             panel.Children.Add(overlayRow);
         });
 
+        AddTab(Loc.T("tab.crop"), "", panel =>
+        {
+            panel.Children.Add(Note(Loc.T("crop.head")));
+
+            // everything below the main switch follows it, the way "start minimised"
+            // follows the tray checkbox
+            var tuning = new List<UIElement>();
+            void Tune(UIElement e) { tuning.Add(e); panel.Children.Add(e); }
+
+            panel.Children.Add(Check(Loc.T("crop.enable"), _cfg.AdaptiveCrop, v =>
+            {
+                _cfg.AdaptiveCrop = v;
+                foreach (var e in tuning) e.IsEnabled = v;
+            }, Loc.T("crop.enable.note")));
+
+            _cropStatus = Text("", dim: true);
+            _cropStatus.Margin = new Thickness(0, 2, 0, 10);
+            panel.Children.Add(_cropStatus);
+
+            Tune(Check(Loc.T("crop.vertical"), _cfg.CropVertical,
+                v => _cfg.CropVertical = v, Loc.T("crop.vertical.note")));
+            Tune(Check(Loc.T("crop.horizontal"), _cfg.CropHorizontal,
+                v => _cfg.CropHorizontal = v, Loc.T("crop.horizontal.note")));
+
+            // the mapping changes without the bars having moved, so the zones have to be
+            // rebuilt by hand - the detector itself has nothing new to report
+            Tune(Check(Loc.T("crop.stretch"), _cfg.CropStretch,
+                v => { _cfg.CropStretch = v; _engine.RequestRelayout(); }, Loc.T("crop.stretch.note")));
+
+            Tune(Slider(Loc.T("crop.min"), _cfg.CropMinPercent, 0, 10, 0.5,
+                v => _cfg.CropMinPercent = v, v => v.ToString("0.#"), Loc.T("crop.min.note")));
+            Tune(Slider(Loc.T("crop.max"), _cfg.CropMaxPercent, 5, 40, 1,
+                v => _cfg.CropMaxPercent = v, v => v.ToString("0"), Loc.T("crop.max.note")));
+            Tune(Slider(Loc.T("crop.level"), _cfg.CropBlackLevel, 0, 48, 1,
+                v => _cfg.CropBlackLevel = (int)v, v => v.ToString("0"), Loc.T("crop.level.note")));
+            Tune(Slider(Loc.T("crop.overlook"), _cfg.CropOverlookPercent, 0, 10, 0.5,
+                v => _cfg.CropOverlookPercent = v, v => v.ToString("0.#"), Loc.T("crop.overlook.note")));
+            Tune(Slider(Loc.T("crop.hold"), _cfg.CropHoldMs / 1000.0, 0.1, 3.0, 0.05,
+                v => _cfg.CropHoldMs = v * 1000.0, v => v.ToString("0.00"), Loc.T("crop.hold.note")));
+
+            foreach (var e in tuning) e.IsEnabled = _cfg.AdaptiveCrop;
+        });
+
         AddTab(Loc.T("tab.color"), "", panel =>
         {
             panel.Children.Add(Slider(Loc.T("color.brightness"), _cfg.MaxBrightness, 0, 1, 0.01, v => _cfg.MaxBrightness = v));
@@ -637,6 +681,33 @@ public partial class MainWindow : Window
         _rebuildingUi = false;
         Nav.SelectedIndex = Math.Min(selected, Nav.Items.Count - 1);
         ApplyPreviewLayout();    // rebuild paths include Cancel and Import, which may flip it
+    }
+
+    /// <summary>
+    /// What the detector currently sees, live. Without it the settings are guesswork: the
+    /// numbers only mean something against the material actually on screen, and the strip
+    /// alone does not say whether a bar was found or merely suspected.
+    /// </summary>
+    void UpdateCropStatus()
+    {
+        if (_cropStatus == null) return;
+
+        if (!_cfg.AdaptiveCrop)
+        {
+            _cropStatus.Text = Loc.T("crop.status.off");
+            return;
+        }
+
+        var r = _engine.Crop;
+        bool v = r.Y0 > 0.001, h = r.X0 > 0.001;
+
+        // whole sentences per case rather than one assembled from pieces: word order is
+        // not the same in every language, and a translator cannot change it in a join
+        _cropStatus.Text =
+            v && h ? string.Format(Loc.T("crop.status.both"), r.Y0 * 100, r.X0 * 100) :
+            v ? string.Format(Loc.T("crop.status.v"), r.Y0 * 100) :
+            h ? string.Format(Loc.T("crop.status.h"), r.X0 * 100) :
+            Loc.T("crop.status.none");
     }
 
     void CountChanged()
@@ -1001,6 +1072,8 @@ public partial class MainWindow : Window
 
         // the toggle applies live; the block only exists while the preview column does
         StatsCard.Visibility = _cfg.ShowStats ? Visibility.Visible : Visibility.Collapsed;
+
+        UpdateCropStatus();
 
         var warnings = new List<string>();
         if (_engine.IsPaused) warnings.Add(string.Format(Loc.T("warn.paused"), _engine.PauseReason));

@@ -94,8 +94,32 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 читают фиксированное число байт независимо от заголовка, поэтому при расхождении
 изображение смещается вдоль ленты.
 
-Настройки, лог и файлы переводов хранятся в `%APPDATA%\Rimlight\`. Переводы — обычные
-JSON-файлы, их можно править и дополнять.
+Настройки, лог и файлы переводов хранятся в `%APPDATA%\Rimlight\`.
+
+## Локализация
+
+В программу встроены два языка, русский и английский. При первом запуске они
+записываются в `%APPDATA%\Rimlight\lang\` как `ru.json` и `en.json`, дальше читаются
+именно эти файлы: правка в файле видна после перезапуска. При обновлении программы оба
+встроенных файла перезаписываются, чтобы старый файл не скрыл новые формулировки;
+признак этого — поле `_version`. Добавленные языки остаются как есть.
+
+Свой перевод — это ещё один файл в той же папке:
+
+1. Скопировать `en.json` под именем с кодом языка, например `de.json`: имя файла и есть
+   код языка. Шаблоны обоих встроенных языков лежат в папке [lang](lang) репозитория.
+2. Заменить значения на переведённые, ключи слева оставить как есть. `{0}` внутри
+   строки — подстановка (версия, путь, число диодов), её нужно сохранить. В поле `_name`
+   пишется название языка так, как оно должно выглядеть в списке, например `Deutsch`.
+   Поле `_version` можно удалить: оно относится только к встроенным файлам.
+3. Запустить программу — язык появится в списке в разделе «Основное».
+
+Файл проверяется только на базовую структуру: он должен читаться как JSON вида
+«строка: строка» и содержать хотя бы несколько знакомых ключей, иначе он не считается
+переводом и пропускается с записью в лог. Переводить всё сразу не обязательно:
+пропущенные ключи берутся из английского. У добавленного языка часть служебного текста
+тоже остаётся английской — сообщения лога и подписи в статистике заданы в коде, а не в
+JSON.
 
 ## Захват под нагрузкой GPU
 
@@ -124,6 +148,7 @@ Windows (DWM). Композиция выполняется на видеокар
 src/Rimlight        приложение: раскладка, цвет, COM-порт, интерфейс
 src/Rimlight.Core   бэкенды захвата, конвейер цвета, шина кадров, локализация
 tools/CaptureProbe  диагностика: все методы захвата рядом, с замерами
+lang                шаблоны переводов, они же пишутся в %APPDATA%
 ```
 
 `tools/CaptureProbe` запускает все бэкенды захвата одновременно на одном мониторе и
@@ -250,8 +275,34 @@ once: every part of the strip should repeat the colour of the screen edge neares
 The LED total must match `NUM_LEDS` in the firmware: stock Adalight sketches read a fixed
 number of bytes regardless of the header, so a mismatch shifts the picture along the strip.
 
-Settings, the log and translation files are stored in `%APPDATA%\Rimlight\`. Translations
-are plain JSON files and can be edited or added.
+Settings, the log and translation files are stored in `%APPDATA%\Rimlight\`.
+
+## Localisation
+
+Two languages are built into the program, Russian and English. On the first run they are
+written to `%APPDATA%\Rimlight\lang\` as `ru.json` and `en.json`, and those files are
+what gets read from then on, so an edit to a file takes effect on the next start. An
+update of the program rewrites both built-in files so that an old file cannot hide the
+new wording; the `_version` entry is what marks it. Added languages are left as they are.
+
+A translation of your own is one more file in the same folder:
+
+1. Copy `en.json` to a name holding the language code, `de.json` for instance: the file
+   name is the language code. Templates of both built-in languages are in the
+   [lang](lang) folder of the repository.
+2. Replace the values with the translated text and leave the keys on the left as they
+   are. A `{0}` inside a string is a substitution (a version, a path, an LED count) and
+   has to be kept. The `_name` entry is the language as it should appear in the list,
+   `Deutsch` for instance. The `_version` entry can be deleted: it concerns the built-in
+   files only.
+3. Start the program — the language appears in the list in the *General* section.
+
+Only the basic structure is checked: the file has to read as a JSON map of string to
+string and to hold at least a few known keys, otherwise it is not taken for a translation
+and is skipped with a line in the log. There is no need to translate everything at once:
+the keys left out are taken from English. An added language also keeps part of the
+incidental text in English — log messages and the words in the statistics line are
+written in the code rather than in the JSON.
 
 ## Capture under GPU load
 
@@ -279,6 +330,7 @@ Two factors affect how often composition runs:
 src/Rimlight        the application: layout, colour, serial, UI
 src/Rimlight.Core   capture backends, colour pipeline, frame bus, localisation
 tools/CaptureProbe  diagnostic tool: every capture method side by side, with metrics
+lang                translation templates, also written to %APPDATA%
 ```
 
 `tools/CaptureProbe` runs all capture backends at once on a single monitor and reports

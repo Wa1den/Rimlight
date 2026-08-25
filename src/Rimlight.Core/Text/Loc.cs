@@ -1,28 +1,44 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Rimlight.Capture;
 
 namespace Rimlight.Text;
 
 /// <summary>
-/// Strings by key. Built-in defaults are written out as JSON next to the config on first
-/// run, and whatever is on disk wins afterwards - so translations can be corrected or new
-/// languages added without touching the program.
+/// Strings by key. Two languages are built in and written out as JSON next to the config
+/// on first run; from then on the folder is what gets read. Any other file in that folder
+/// joins the language list, so a translation needs no rebuild.
 /// </summary>
 public static class Loc
 {
     /// <summary>
     /// Bumped whenever the built-in strings change. Files on disk deliberately win over
     /// the built-ins so translations can be corrected - but that also meant an old file
-    /// silently shadowed newly reworded labels, so a mismatched version rewrites it.
+    /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
+    /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "10";
+    const string Version = "11";
+
+    /// <summary>
+    /// Bookkeeping entries rather than translated text: the version a file was written
+    /// from, and the name to show in the language list.
+    /// </summary>
+    const string VersionKey = "_version";
+    const string NameKey = "_name";
+
+    /// <summary>The languages the program carries inside itself.</summary>
+    static readonly string[] BuiltinCodes = { "ru", "en" };
 
     public static string Language { get; private set; } = "ru";
 
     static Dictionary<string, string> _current = new();
+
+    /// <summary>Built-ins plus whatever usable files the folder holds; rebuilt on load.</summary>
+    static string[] _available = BuiltinCodes;
+    static readonly Dictionary<string, string> _names = new();
 
     /// <summary>
     /// Set by the application on startup. The library has no config file of its own, and
@@ -36,9 +52,12 @@ public static class Loc
         if (!string.IsNullOrWhiteSpace(directory)) Directory = directory;
     }
 
-    public static readonly string[] Available = { "ru", "en" };
+    public static string[] Available => _available;
 
-    public static string DisplayName(string code) => code switch
+    public static string DisplayName(string code) =>
+        _names.TryGetValue(code, out var name) ? name : BuiltinName(code);
+
+    static string BuiltinName(string code) => code switch
     {
         "ru" => "Русский",
         "en" => "English",
@@ -47,26 +66,24 @@ public static class Loc
 
     public static void Load(string language)
     {
-        Language = Array.IndexOf(Available, language) >= 0 ? language : "ru";
         WriteDefaults();
+        Scan();
 
-        var defaults = Builtin(Language);
-        try
-        {
-            string path = Path.Combine(Directory, Language + ".json");
-            if (File.Exists(path))
-            {
-                var loaded = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
-                if (loaded != null)
-                    foreach (var kv in loaded) defaults[kv.Key] = kv.Value;
-            }
-        }
-        catch (Exception ex)
-        {
-            ProbeLog.Log("lang", P("не удалось прочитать перевод: ", "could not read translation: ") + ex.Message);
-        }
+        Language = Array.IndexOf(_available, language) >= 0 ? language : "ru";
 
-        _current = defaults;
+        // английский подложкой: строка, пропущенная в переводе, показывается
+        // по-английски, а не ключом
+        var strings = English();
+        if (Array.IndexOf(BuiltinCodes, Language) >= 0) Overlay(strings, Builtin(Language));
+        Overlay(strings, ReadLocale(Language));
+
+        _current = strings;
+    }
+
+    static void Overlay(Dictionary<string, string> onto, Dictionary<string, string>? from)
+    {
+        if (from == null) return;
+        foreach (var kv in from) onto[kv.Key] = kv.Value;
     }
 
     /// <summary>Missing keys fall back to the key itself, so nothing ever renders blank.</summary>
@@ -80,8 +97,94 @@ public static class Loc
     /// handed to a translator; a hundred and some log messages that each appear once would
     /// only turn into a hundred names nobody ever looks up, and the English would sit far
     /// away from the code that emits it.
+    ///
+    /// Anything other than Russian gets the English half: a language added as a file has
+    /// no translation for these, so they follow the same English fallback as the keys.
     /// </summary>
-    public static string P(string ru, string en) => Language == "en" ? en : ru;
+    public static string P(string ru, string en) => Language == "ru" ? ru : en;
+
+    /// <summary>
+    /// Builds the language list out of the folder: the file name is the code, "_name" is
+    /// what the list shows. Everything that reads as a translation is offered, even a
+    /// half-finished one - the keys it lacks come from English.
+    /// </summary>
+    static void Scan()
+    {
+        _names.Clear();
+        foreach (var code in BuiltinCodes) _names[code] = BuiltinName(code);
+
+        var extra = new List<string>();
+        try
+        {
+            foreach (var path in System.IO.Directory.EnumerateFiles(Directory, "*.json"))
+            {
+                string code = Path.GetFileNameWithoutExtension(path);
+                if (code.Length == 0) continue;
+
+                var loaded = ReadLocale(code);
+                if (loaded == null) continue;
+
+                if (Array.IndexOf(BuiltinCodes, code) < 0) extra.Add(code);
+
+                if (loaded.TryGetValue(NameKey, out var name) && name.Trim().Length > 0) _names[code] = name.Trim();
+                else if (!_names.ContainsKey(code)) _names[code] = code;
+            }
+        }
+        catch (Exception ex)
+        {
+            ProbeLog.Log("lang", P("не удалось прочитать папку переводов: ",
+                                  "could not read the translation folder: ") + ex.Message);
+        }
+
+        extra.Sort(StringComparer.OrdinalIgnoreCase);
+        _available = BuiltinCodes.Concat(extra).ToArray();
+    }
+
+    /// <summary>
+    /// How many known keys a file must carry to be taken for a translation. Verifying the
+    /// whole set would reject a partial translation that works perfectly well, while this
+    /// much keeps an unrelated JSON file, an exported config for one, out of the list.
+    /// </summary>
+    const int MinKnownKeys = 8;
+
+    /// <summary>Reads one file of the folder; null if it is missing or is not a translation.</summary>
+    static Dictionary<string, string>? ReadLocale(string code)
+    {
+        string path = Path.Combine(Directory, code + ".json");
+        if (!File.Exists(path)) return null;
+
+        Dictionary<string, string>? loaded;
+        try
+        {
+            // нестроковое значение бросает исключение здесь - это и есть проверка формата
+            loaded = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+        }
+        catch (Exception ex)
+        {
+            ProbeLog.Log("lang", P("не удалось прочитать перевод ",
+                                  "could not read translation ") + Path.GetFileName(path) + ": " + ex.Message);
+            return null;
+        }
+
+        if (loaded == null || !IsLocale(loaded))
+        {
+            ProbeLog.Log("lang", P("не похоже на перевод, файл пропущен: ",
+                                  "not a translation, file skipped: ") + Path.GetFileName(path));
+            return null;
+        }
+
+        return loaded;
+    }
+
+    static bool IsLocale(Dictionary<string, string> loaded)
+    {
+        var known = English();
+        int hits = 0;
+        foreach (var key in loaded.Keys)
+            if (known.ContainsKey(key) && ++hits >= MinKnownKeys) return true;
+
+        return false;
+    }
 
     static void WriteDefaults()
     {
@@ -95,7 +198,7 @@ public static class Loc
                 WriteIndented = true,
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             };
-            foreach (var code in Available)
+            foreach (var code in BuiltinCodes)
             {
                 string path = Path.Combine(Directory, code + ".json");
                 if (File.Exists(path) && CurrentVersionOf(path) == Version) continue;
@@ -105,7 +208,8 @@ public static class Loc
         }
         catch (Exception ex)
         {
-            ProbeLog.Log("lang", "не удалось записать переводы: " + ex.Message);
+            ProbeLog.Log("lang", P("не удалось записать переводы: ",
+                                  "could not write the translations: ") + ex.Message);
         }
     }
 
@@ -114,7 +218,7 @@ public static class Loc
         try
         {
             var d = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
-            return d != null && d.TryGetValue("_version", out var v) ? v : "";
+            return d != null && d.TryGetValue(VersionKey, out var v) ? v : "";
         }
         catch
         {
@@ -125,7 +229,8 @@ public static class Loc
     static Dictionary<string, string> Builtin(string code)
     {
         var d = code == "en" ? English() : Russian();
-        d["_version"] = Version;
+        d[NameKey] = BuiltinName(code);
+        d[VersionKey] = Version;
         return d;
     }
 
@@ -158,7 +263,7 @@ public static class Loc
         ["main.log"] = "Писать лог",
         ["main.log.note"] = "Лог сохраняется в папке настроек.",
         ["main.language"] = "Язык",
-        ["main.language.note"] = "Переводы хранятся в JSON-файлах рядом с настройками, их можно править и дополнять.",
+        ["main.language.note"] = "Переводы лежат в JSON-файлах в папке lang рядом с настройками. Добавленный туда файл появляется в списке при следующем запуске, непереведённые строки берутся из английского. Как сделать перевод, описано в README.",
         ["main.export"] = "Экспорт настроек",
         ["main.import"] = "Импорт",
         ["main.exit"] = "Выход",
@@ -280,7 +385,7 @@ public static class Loc
         ["main.log"] = "Write log",
         ["main.log.note"] = "The log is saved in the settings folder.",
         ["main.language"] = "Language",
-        ["main.language.note"] = "Translations are stored as JSON files next to the settings and can be edited or extended.",
+        ["main.language.note"] = "Translations are JSON files in the lang folder next to the settings. A file added there appears in the list on the next start, with untranslated lines taken from English. The README describes how to make one.",
         ["main.export"] = "Export settings",
         ["main.import"] = "Import",
         ["main.exit"] = "Exit",

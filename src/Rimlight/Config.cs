@@ -23,6 +23,16 @@ public sealed class RimlightConfig
     public string MonitorDeviceName { get; set; } = "";      // empty = primary
 
     /// <summary>
+    /// Which screen the layout is bound to, stored as the EDID model rather than the device
+    /// name. Windows hands out <c>\\.\DISPLAYn</c> in the order it finds the outputs, so moving
+    /// a cable between ports of the graphics card renumbers them: in one observed case an
+    /// ultrawide and a portrait screen swapped names between sessions, which would have
+    /// pointed the capture at the wrong screen. The device name is kept as well, to tell
+    /// apart two screens of the same model.
+    /// </summary>
+    public string MonitorModel { get; set; } = "";
+
+    /// <summary>
     /// An active Desktop Duplication client can make Windows draw the mouse cursor through
     /// composition instead of its hardware plane, which shows up as cursor flicker. This
     /// lets a single method be forced so the cause can be confirmed and worked around.
@@ -69,6 +79,23 @@ public sealed class RimlightConfig
     // ---- colour -------------------------------------------------------------
     public double MaxBrightness { get; set; } = 1.0;      // 0..1 overall cap
     public double MinLuma { get; set; } = 0.0;            // below this the strip goes dark
+
+    /// <summary>
+    /// How far up the scale colour is taken out of the shadows. Zero switches it off.
+    ///
+    /// White balance is a proportion between the channels, so it applies the same tint at
+    /// every level, and where the picture is almost black that tint is all there is to see.
+    /// At 5000 K the gains are R 1.000, G 0.793, B 0.629, so a grey of 15 reaches the strip
+    /// as 23, 20, 18: a black player bar with white digits lights it dark red. Fading the
+    /// channels towards their own luminance as the level falls removes the tint without
+    /// changing how bright the LED ends up, and leaves normal content alone because there
+    /// the level is high.
+    ///
+    /// Applied after the pipeline rather than inside it: ColorPipeline is the shared copy
+    /// kept identical with the case lighting module, so it is not this project's to change.
+    /// </summary>
+    public double ShadowNeutral { get; set; }
+
     public double Saturation { get; set; } = 1.0;         // 1 = untouched
     public double Gamma { get; set; } = 2.2;              // 2.2 = neutral round trip
     public int TemperatureK { get; set; } = 6500;         // 6500 = neutral

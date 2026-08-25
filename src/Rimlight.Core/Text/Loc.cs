@@ -18,7 +18,7 @@ public static class Loc
     /// the built-ins so translations can be corrected - but that also meant an old file
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it.
     /// </summary>
-    const string Version = "9";
+    const string Version = "10";
 
     public static string Language { get; private set; } = "ru";
 
@@ -131,6 +131,8 @@ public static class Loc
 
     static Dictionary<string, string> Russian() => new()
     {
+        ["off"] = "выключено",
+
         ["tab.main"] = "Основное",
         ["tab.device"] = "Устройство",
         ["tab.layout"] = "Раскладка",
@@ -187,6 +189,8 @@ public static class Loc
 
         ["color.brightness"] = "Максимальная яркость",
         ["color.minluma"] = "Порог темноты",
+        ["color.shadow"] = "Обесцвечивание тёмного",
+        ["color.shadow.note"] = "Баланс белого применяется одинаково ко всем уровням, поэтому на почти чёрном участке экрана от кадра остаётся только оттенок: чёрная полоса плеера с белыми цифрами при тёплом балансе светит тёмно-красным. Чем ниже яркость, тем сильнее цвет сводится к серому. Ноль отключает.",
         ["color.saturation"] = "Насыщенность",
         ["color.gamma"] = "Гамма",
         ["color.temperature"] = "Цветовая температура, K",
@@ -249,6 +253,8 @@ public static class Loc
 
     static Dictionary<string, string> English() => new()
     {
+        ["off"] = "off",
+
         ["tab.main"] = "General",
         ["tab.device"] = "Device",
         ["tab.layout"] = "Layout",
@@ -305,6 +311,8 @@ public static class Loc
 
         ["color.brightness"] = "Maximum brightness",
         ["color.minluma"] = "Darkness threshold",
+        ["color.shadow"] = "Shadow desaturation",
+        ["color.shadow.note"] = "White balance applies the same tint at every level, so in a nearly black part of the frame that tint is all that reaches the strip: a black player bar with white digits lights it dark red under a warm balance. The lower the brightness, the further the colour is pulled towards grey. Zero switches it off.",
         ["color.saturation"] = "Saturation",
         ["color.gamma"] = "Gamma",
         ["color.temperature"] = "Colour temperature, K",

@@ -78,6 +78,17 @@ public partial class MainWindow : Window
         Icon = LoadIcon();
         _saved = _cfg.Clone();
 
+        // Settings written before the switch to the EDID model know only the device name.
+        // Filling the model in now rather than at the next Apply: a cable can be moved
+        // between ports before the user has any reason to press it. Written onto the
+        // applied copy as well, which is what reaches disk on exit.
+        if (_cfg.MonitorModel.Length == 0)
+        {
+            var known = ScreenChoice.Find(_monitors, _cfg.MonitorDeviceName, "");
+            if (known != null && known.Model.Length > 0)
+                _cfg.MonitorModel = _saved.MonitorModel = known.Model;
+        }
+
         // The watcher only reports; deciding what counts as "nobody is looking" stays here,
         // because it is this application's settings that say so.
         _power = new PowerWatcher();
@@ -124,11 +135,18 @@ public partial class MainWindow : Window
 
         BuildSettings();
 
+        // after BuildSettings: the compact width is added up from the section rail,
+        // and the rail is empty until the sections are in it
+        ApplyPreviewLayout();
+
         Loaded += (_, _) =>
         {
             _power.Attach(this);
             SetupTray();
             Restart();
+
+            // the startup pass had to estimate the window frame; now it can be measured
+            if (!_cfg.ShowPreview) ApplyPreviewLayout();
 
             if (_cfg.StartMinimized) WindowState = WindowState.Minimized;
         };
@@ -212,45 +230,77 @@ public partial class MainWindow : Window
         }
 
         if (_cfg.WindowMaximized) WindowState = WindowState.Maximized;
-
-        ApplyPreviewLayout();
     }
 
     /// <summary>
-    /// The preview is the whole right side, so hiding it also narrows the window: compact
-    /// mode sizes to the settings column and the wide width is remembered for the way
-    /// back. Only the wide width is ever persisted.
+    /// The preview is the whole right side, so hiding it also narrows the window: the
+    /// compact width is fixed and the wide one is remembered for the way back. Only the
+    /// wide width is ever persisted.
     /// </summary>
     const double WideMinWidth = 1317;
 
+    /// <summary>Width of the settings column, the same with the preview and without it.
+    /// Declared in MainWindow.xaml as well, and the two have to stay in step.</summary>
+    const double PageWidth = 430;
+
+    /// <summary>
+    /// Shows or hides the preview, and gives the window a width to match.
+    ///
+    /// Without the preview the width is fixed rather than sized to content: SizeToContent
+    /// leaves the Width property holding a stale number, so returning to the wide size took
+    /// two assignments to work at all, and it recomputes the height along with the width.
+    /// A width of its own also means the window cannot be dragged wider into empty space.
+    /// </summary>
     void ApplyPreviewLayout()
     {
         if (_cfg.ShowPreview)
         {
             RightColumn.Visibility = Visibility.Visible;
-            SizeToContent = SizeToContent.Manual;
-            if (IsLoaded && WindowState == WindowState.Normal)
-            {
-                // in compact mode the real size came from SizeToContent, not the Width
-                // property - which may still hold the wide value, making a plain
-                // assignment a no-op; sync it to reality first so the second set resizes
-                Width = ActualWidth;
-                Width = Math.Max(WideMinWidth, _wideWidth);
-            }
+            MaxWidth = double.PositiveInfinity;
             MinWidth = WideMinWidth;
+            if (IsLoaded && WindowState == WindowState.Normal)
+                Width = Math.Max(WideMinWidth, _wideWidth);
+            return;
         }
-        else
-        {
-            // capture only on the actual transition out of wide mode: a repeat call while
-            // already compact (Apply, Cancel, a language rebuild) would capture the
-            // compact width and the window would come back too narrow
-            if (RightColumn.Visibility == Visibility.Visible
-                && IsLoaded && WindowState == WindowState.Normal && ActualWidth >= WideMinWidth)
-                _wideWidth = ActualWidth;
-            RightColumn.Visibility = Visibility.Collapsed;
-            MinWidth = 0;
-            SizeToContent = SizeToContent.Width;
-        }
+
+        // capture only on the actual transition out of wide mode: a repeat call while
+        // already compact (Apply, Cancel, a language rebuild) would capture the
+        // compact width and the window would come back too narrow
+        if (RightColumn.Visibility == Visibility.Visible
+            && IsLoaded && WindowState == WindowState.Normal && ActualWidth >= WideMinWidth)
+            _wideWidth = ActualWidth;
+
+        double narrow = NarrowWidth();
+
+        RightColumn.Visibility = Visibility.Collapsed;
+        MinWidth = 0;
+        Width = narrow;
+        MinWidth = MaxWidth = narrow;
+    }
+
+    /// <summary>
+    /// What is left of the window once the preview is gone: the section rail, the settings
+    /// page and the window frame. Added up rather than asked of the layout, because the
+    /// point is a width that does not depend on what is written in the window.
+    ///
+    /// The rail is measured, not read: a language change rebuilds its captions, and before
+    /// the window is shown nothing has been laid out at all. DesiredSize covers its margins
+    /// either way. The page's own right margin is left out - there is no preview beside it
+    /// to keep clear of, and the window frame leaves a gap there anyway.
+    /// </summary>
+    double NarrowWidth()
+    {
+        if (IsLoaded) UpdateLayout();
+        else if (Rail.DesiredSize.Width <= 0)
+            Rail.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+        // Before the window is shown there is no frame to measure, so the startup value is
+        // an estimate; Loaded runs this again and replaces it with the real one.
+        double frame = Content is FrameworkElement root && root.ActualWidth > 0
+            ? ActualWidth - root.ActualWidth
+            : 16;
+
+        return Rail.DesiredSize.Width + PageWidth + frame;
     }
 
     void SaveWindowGeometry()
@@ -411,9 +461,11 @@ public partial class MainWindow : Window
         {
             _monitorBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
             foreach (var m in _monitors) _monitorBox.Items.Add(m.ToString());
-            int idx = _monitors.FindIndex(m => m.DeviceName == _cfg.MonitorDeviceName);
-            if (idx < 0) idx = _monitors.FindIndex(m => m.IsPrimary);
-            _monitorBox.SelectedIndex = Math.Max(0, idx);
+            var chosen = ScreenChoice.Find(_monitors, _cfg.MonitorDeviceName, _cfg.MonitorModel);
+            _monitorBox.SelectedIndex = chosen == null ? 0 : Math.Max(0, _monitors.IndexOf(chosen));
+            // Without this the screen was applied live and then lost: only the applied
+            // copy of the settings reaches disk, and nothing marked the choice as an edit.
+            _monitorBox.SelectionChanged += (_, _) => MarkDirty();
             panel.Children.Add(Labeled(Loc.T("device.monitor"), _monitorBox));
 
             _portBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), IsEditable = true, Text = _cfg.PortName };
@@ -497,6 +549,11 @@ public partial class MainWindow : Window
             panel.Children.Add(Slider(Loc.T("color.minluma"), Math.Pow(_cfg.MinLuma / 0.3, 1.0 / 3.0), 0, 1, 0.005,
                 v => _cfg.MinLuma = Math.Pow(v, 3) * 0.3,
                 v => (Math.Pow(v, 3) * 0.3).ToString("0.0000")));
+
+            panel.Children.Add(Slider(Loc.T("color.shadow"), _cfg.ShadowNeutral, 0, 0.4, 0.01,
+                v => _cfg.ShadowNeutral = v,
+                v => v <= 0 ? Loc.T("off") : v.ToString("0.00"),
+                Loc.T("color.shadow.note")));
 
             panel.Children.Add(Slider(Loc.T("color.saturation"), _cfg.Saturation, 0, 2.5, 0.05, v => _cfg.Saturation = v));
             panel.Children.Add(Slider(Loc.T("color.gamma"), _cfg.Gamma, 1.0, 3.5, 0.05, v => _cfg.Gamma = v));
@@ -617,7 +674,13 @@ public partial class MainWindow : Window
     void Restart()
     {
         if (_monitorBox.SelectedIndex >= 0 && _monitorBox.SelectedIndex < _monitors.Count)
-            _cfg.MonitorDeviceName = _monitors[_monitorBox.SelectedIndex].DeviceName;
+        {
+            // модель из EDID - основной признак, имя устройства только различает
+            // два одинаковых экрана
+            var chosen = _monitors[_monitorBox.SelectedIndex];
+            _cfg.MonitorDeviceName = chosen.DeviceName;
+            _cfg.MonitorModel = chosen.Model;
+        }
 
         _cfg.PortName = string.IsNullOrWhiteSpace(_portBox.Text) ? "COM4" : _portBox.Text.Trim();
 

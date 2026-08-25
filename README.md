@@ -71,6 +71,8 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 ## Настройка
 
 1. **Устройство** — выбрать монитор и COM-порт, нажать «Применить и переподключиться».
+   Монитор запоминается по модели из EDID, поэтому перестановка кабеля между разъёмами
+   видеокарты не переводит захват на другой экран.
 2. **Раскладка** — задать число диодов по сторонам, стартовый угол и направление. Кнопка
    **«Показать схему на экране»** накладывает пронумерованные зоны выборки поверх экрана;
    клик по ячейке подсвечивает её зелёным. Схема попадает в захват как обычное
@@ -79,8 +81,9 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 3. Точная подгонка выполняется ползунком **«Смещение»**: стартовый угол сам по себе не
    определяет положение первого диода — оно зависит ещё и от того, по какой стороне лента
    уходит из угла.
-4. **Цвет** — температура и усиления по каналам подбираются под цвет стены за монитором;
-   насыщенность, гамма и порог темноты настраиваются по вкусу.
+4. **Цвет** — температура и усиления по каналам подбираются под цвет стены за монитором.
+   Ползунок **«Обесцвечивание тёмного»** убирает оттенок баланса белого с почти чёрных
+   участков кадра: без него чёрная полоса плеера при тёплом балансе светит тёмно-красным.
 
 Для проверки на настоящем кадре в `pics/Rainbow.jpg` лежит изображение с насыщенными
 цветами во всех частях кадра. Установленное фоном рабочего стола, оно показывает
@@ -225,7 +228,9 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
 
 ## Setup
 
-1. **Device** — pick the monitor and the serial port, press *Apply and reconnect*.
+1. **Device** — pick the monitor and the serial port, press *Apply and reconnect*. The
+   monitor is remembered by its EDID model, so moving a cable between ports of the
+   graphics card does not point the capture at a different screen.
 2. **Layout** — enter the LED count per side, the start corner and the direction. The
    *Show map on screen* button overlays numbered sampling zones on the screen; clicking a
    cell highlights it in green. The map is captured like any other image, so a green LED on
@@ -234,7 +239,9 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
    determine the position of the first LED — it also depends on which side the strip leaves
    the corner on.
 4. **Colour** — temperature and the per-channel gains are matched to the wall behind the
-   monitor; saturation, gamma and the darkness threshold are set to preference.
+   monitor. The **Shadow desaturation** slider removes the white balance tint from nearly
+   black parts of the frame: without it a black player bar lights the strip dark red under
+   a warm balance.
 
 For a check against a real frame, `pics/Rainbow.jpg` is an image with saturated colours
 in every part of the frame. Set as the desktop background, it shows the whole layout at

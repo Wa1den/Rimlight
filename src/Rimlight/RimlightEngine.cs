@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using Rimlight.Capture;
 using Rimlight.Capture.Backends;
@@ -125,10 +124,7 @@ public sealed class RimlightEngine : IDisposable
         Stop();
         _cfg = cfg;
 
-        var monitors = Native.EnumerateMonitors();
-        _monitor = monitors.FirstOrDefault(m => m.DeviceName == cfg.MonitorDeviceName)
-                   ?? monitors.FirstOrDefault(m => m.IsPrimary)
-                   ?? monitors.FirstOrDefault();
+        _monitor = ScreenChoice.Find(Native.EnumerateMonitors(), cfg.MonitorDeviceName, cfg.MonitorModel);
 
         if (_monitor == null)
         {
@@ -226,7 +222,9 @@ public sealed class RimlightEngine : IDisposable
                 double dt = startMs - lastMs;
                 lastMs = startMs;
                 _pipeline.Process(_sampled, _output, _cfg.ToColorSettings(), _zones.Length, dt <= 0 ? periodMs : dt);
+                NeutraliseShadows(_cfg.ShadowNeutral);
 
+                // после обесцвечивания, чтобы превью показывало то же, что уходит на ленту
                 lock (_previewLock) Buffer.BlockCopy(_output, 0, _preview, 0, _output.Length);
             }
 
@@ -256,6 +254,42 @@ public sealed class RimlightEngine : IDisposable
             if (restMs > 0.2) pacer.Wait(restMs);
         }
     }
+
+    /// <summary>
+    /// Takes the colour out of what is nearly black, once the pipeline has had its say.
+    ///
+    /// Done here rather than inside the pipeline because that one is the shared copy of the
+    /// case lighting code, kept identical on both sides. Working on the finished bytes is
+    /// enough: the tint is a proportion between the channels, and pulling them back towards
+    /// their own luminance removes it without touching how bright the LED ends up.
+    ///
+    /// Note the scale. MinLuma is compared in linear light inside the pipeline, this knee
+    /// against gamma-encoded bytes, so the two numbers do not mean the same thing.
+    /// </summary>
+    void NeutraliseShadows(double knee)
+    {
+        if (knee <= 0) return;
+
+        double limit = knee * 255.0;
+
+        for (int i = 0; i + 2 < _output.Length; i += 3)
+        {
+            double r = _output[i], g = _output[i + 1], b = _output[i + 2];
+
+            double y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            if (y >= limit) continue;
+
+            // 1 на пороге, 0 на чёрном: чем темнее, тем ближе к серому
+            double keep = y / limit;
+
+            _output[i] = Fade(y, r, keep);
+            _output[i + 1] = Fade(y, g, keep);
+            _output[i + 2] = Fade(y, b, keep);
+        }
+    }
+
+    static byte Fade(double luma, double channel, double keep) =>
+        (byte)Math.Clamp(Math.Round(luma + (channel - luma) * keep), 0, 255);
 
     /// <summary>Latest colours actually sent, for the on-screen preview.</summary>
     public void CopyPreview(byte[] dest)

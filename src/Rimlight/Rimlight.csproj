@@ -15,7 +15,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RootNamespace>Rimlight</RootNamespace>
     <AssemblyName>Rimlight</AssemblyName>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <!-- ThemeMode (Fluent) is still marked experimental in .NET 9 -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>

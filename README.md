@@ -36,6 +36,14 @@
 сглаживание выполняются над линейными значениями, гамма-коррекция применяется в конце.
 Без этого усреднение занижает яркость на контрастных сценах.
 
+**Адаптивное кадрирование.** Фильм шире экрана идёт с чёрными полосами сверху и снизу, и
+диоды вдоль них не светят. Границы картинки определяются по кадру, и зоны выборки
+переносятся внутрь неё; картинка при этом может раскладываться по всей ленте, чтобы на ней
+не оставалось тёмных участков. Субтитры и панель плеера рисуются поверх полосы, поэтому
+строка проверяется по краям, отдельно от центра, а короткий светлый участок внутри полосы
+границей не считается. Новые границы применяются, только если продержались заданное время,
+иначе за полосу принималась бы тёмная сцена.
+
 ## Что нужно
 
 - Windows 10 2004 или новее (лучше Windows 11)
@@ -84,6 +92,10 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 4. **Цвет** — температура и усиления по каналам подбираются под цвет стены за монитором.
    Ползунок **«Обесцвечивание тёмного»** убирает оттенок баланса белого с почти чёрных
    участков кадра: без него чёрная полоса плеера при тёплом балансе светит тёмно-красным.
+5. **Кадрирование** — включает поиск чёрных полос, по умолчанию выключенный. Значения
+   рассчитаны на фильмы 2.35:1 и 21:9. Если полосы теряются при всплывающей панели плеера,
+   увеличивается **«Пропускать помехи»**; если кадрирование срабатывает на тёмных сценах —
+   **«Задержка подтверждения»** и **«Минимальная полоса»**.
 
 Для проверки на настоящем кадре в `pics/Rainbow.jpg` лежит изображение с насыщенными
 цветами во всех частях кадра. Установленное фоном рабочего стола, оно показывает
@@ -219,6 +231,14 @@ bus instead of 20 MB, and the readback does not wait for the GPU to become free.
 done on linear values; gamma encoding is applied at the end. Without this, averaging
 understates brightness on high-contrast scenes.
 
+**Adaptive cropping.** Material wider than the screen comes with black bars above and below
+it, and the LEDs along them do not light. The edges of the picture are found in the frame
+and the sampling zones move inside them; the picture can be spread across the whole strip
+so that no part of it is left dark. Subtitles and player controls are drawn over the bar, so
+each row is judged by its ends rather than its middle, and a short lit run inside the bar is
+not taken for an edge. New edges are acted on only after they have held for a set time, or a
+dark scene would be read as a bar.
+
 ## Requirements
 
 - Windows 10 2004 or newer (Windows 11 recommended)
@@ -267,6 +287,10 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
    monitor. The **Shadow desaturation** slider removes the white balance tint from nearly
    black parts of the frame: without it a black player bar lights the strip dark red under
    a warm balance.
+5. **Cropping** — switches on the search for black bars, which is off by default. The
+   values suit 2.35:1 and 21:9 films. If the bars are lost when the player controls appear,
+   raise **Step over interference**; if the crop reacts to dark scenes, raise **Confirmation
+   delay** and **Smallest bar**.
 
 For a check against a real frame, `pics/Rainbow.jpg` is an image with saturated colours
 in every part of the frame. Set as the desktop background, it shows the whole layout at

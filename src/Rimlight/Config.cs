@@ -76,6 +76,67 @@ public sealed class RimlightConfig
     [JsonIgnore]
     public int TotalLeds => TopCount + BottomCount + LeftCount + RightCount;
 
+    // ---- adaptive crop ------------------------------------------------------
+
+    /// <summary>
+    /// Follows the black bars of letterboxed material and samples the picture inside them
+    /// instead of the screen. Off by default: it changes where every zone reads from, which
+    /// is not something to switch on behind the back of a strip that is already tuned.
+    /// </summary>
+    public bool AdaptiveCrop { get; set; }
+
+    /// <summary>Letterboxing - bars above and below. The common case, so on by default.</summary>
+    public bool CropVertical { get; set; } = true;
+
+    /// <summary>Pillarboxing - bars left and right. 4:3 material on a wide screen.</summary>
+    public bool CropHorizontal { get; set; } = true;
+
+    /// <summary>Below this a bar is taken for a dark edge and ignored. Percent of the side.</summary>
+    public double CropMinPercent { get; set; } = 2.0;
+
+    /// <summary>
+    /// Ceiling on the crop. 2.39:1 on a 16:9 screen puts about 17% of the height in each
+    /// bar, so the default leaves room for that and still refuses to eat a quarter of the
+    /// picture when a scene is merely dark.
+    /// </summary>
+    public double CropMaxPercent { get; set; } = 25.0;
+
+    /// <summary>Per-channel value below which a pixel counts as black.</summary>
+    public int CropBlackLevel { get; set; } = 16;
+
+    /// <summary>
+    /// How much of a lit run inside the bar is stepped over rather than taken for the edge
+    /// of the picture - subtitles, the progress bar, the buttons of a player. Percent of
+    /// the side.
+    ///
+    /// Five is what the control strip of a player costs: subtitles are handled by ignoring
+    /// the middle of each row and hold at any setting, but the buttons sit out at the ends
+    /// where they are read, and below five the bar is lost the moment the mouse moves.
+    /// </summary>
+    public double CropOverlookPercent { get; set; } = 5.0;
+
+    /// <summary>How long a new reading has to hold before the sampling moves.</summary>
+    public double CropHoldMs { get; set; } = 700;
+
+    /// <summary>
+    /// Spreads the picture across the whole ring, so the LEDs behind a bar light from the
+    /// nearest part of the picture rather than sitting dark. With this off the zones only
+    /// slide clear of the bars and keep their positions otherwise.
+    /// </summary>
+    public bool CropStretch { get; set; } = true;
+
+    /// <summary>The subset the detector reads, on the same footing as the colour settings.</summary>
+    public CropSettings ToCropSettings() => new()
+    {
+        Vertical = CropVertical,
+        Horizontal = CropHorizontal,
+        MinPercent = CropMinPercent,
+        MaxPercent = CropMaxPercent,
+        BlackLevel = CropBlackLevel,
+        OverlookPercent = CropOverlookPercent,
+        HoldMs = CropHoldMs
+    };
+
     // ---- colour -------------------------------------------------------------
     public double MaxBrightness { get; set; } = 1.0;      // 0..1 overall cap
     public double MinLuma { get; set; } = 0.0;            // below this the strip goes dark

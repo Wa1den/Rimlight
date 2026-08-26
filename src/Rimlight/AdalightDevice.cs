@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO.Ports;
 using System.Threading;
 using Rimlight.Capture;
@@ -58,6 +59,21 @@ public sealed class AdalightDevice : IDisposable
 
     int _dropStreak;
 
+    /// <summary>
+    /// Shortest gap the controller can survive between frames, worked out from the baud
+    /// rate and the LED count in <see cref="Open"/>.
+    ///
+    /// The strip cannot absorb frames faster than it can read and show one, and sending
+    /// faster is not merely wasted: FastLED drives WS2812 with interrupts off, the AVR
+    /// receive buffer is 64 bytes, and a frame that arrives during those milliseconds
+    /// loses bytes and is thrown away whole when the firmware hunts for the next header.
+    /// Output is paced well below this, but it may hand over two frames close together
+    /// when one arrives just as a period ends - which is exactly the case to swallow.
+    /// </summary>
+    long _minGapTicks;
+
+    long _lastSendStamp;
+
     /// <param name="waitBootloader">
     /// Opening a closed port can pulse DTR and reboot the Nano, so a first connection waits
     /// it out. Reopening only because the LED count changed does not need that pause: the
@@ -73,6 +89,11 @@ public sealed class AdalightDevice : IDisposable
         _frame = new byte[6 + payload];
         _lastSent = new byte[payload];
         _everSent = false;
+
+        // 10 bits per byte on the wire, 30 us per WS2812 LED to latch
+        double wireMs = _frame.Length * 10.0 * 1000.0 / Math.Max(1, baud);
+        double showMs = ledCount * 0.030;
+        _minGapTicks = (long)((wireMs + showMs) * Stopwatch.Frequency / 1000.0);
 
         // header is constant for a given LED count, so build it once
         int n = ledCount - 1;
@@ -133,12 +154,17 @@ public sealed class AdalightDevice : IDisposable
     /// Skips identical frames - but the firmware blanks the strip after OFF_TIME (10 s)
     /// of silence, so a keepalive resend is required, not a nicety.
     /// </param>
-    public bool Send(byte[] rgb, bool onlyOnChange, int keepAliveMs)
+    /// <param name="force">
+    /// Ignores both pacing guards. Blacking out the strip happens once, on the way out,
+    /// and must not be the frame that gets dropped.
+    /// </param>
+    public bool Send(byte[] rgb, bool onlyOnChange, int keepAliveMs, bool force = false)
     {
         if (_port is not { IsOpen: true }) return false;
 
         int payload = _ledCount * 3;
         long now = Environment.TickCount64;
+        long nowStamp = Stopwatch.GetTimestamp();
 
         if (onlyOnChange && _everSent)
         {
@@ -154,6 +180,14 @@ public sealed class AdalightDevice : IDisposable
             }
         }
 
+        // Closer together than the controller's own cycle is worse than not sending at
+        // all - see _minGapTicks. TickCount64 would not do here: it moves in 15.6 ms steps.
+        if (!force && _everSent && nowStamp - _lastSendStamp < _minGapTicks)
+        {
+            FramesDropped++;
+            return true;
+        }
+
         // Windows takes the write into the driver's queue and returns, so nothing here
         // notices when the strip has fallen behind: the buffer holds about eleven frames,
         // and every one of them sitting in it is latency the eye sees. If the previous
@@ -161,7 +195,7 @@ public sealed class AdalightDevice : IDisposable
         // colours anyway, and stale colours are worth less than no colours.
         try
         {
-            if (_everSent && _dropStreak < MaxDropStreak && _port.BytesToWrite >= _frame.Length)
+            if (!force && _everSent && _dropStreak < MaxDropStreak && _port.BytesToWrite >= _frame.Length)
             {
                 _dropStreak++;
                 FramesDropped++;
@@ -192,6 +226,7 @@ public sealed class AdalightDevice : IDisposable
 
         Buffer.BlockCopy(rgb, 0, _lastSent, 0, copy);
         _lastSendTicks = now;
+        _lastSendStamp = nowStamp;
         _everSent = true;
         FramesSent++;
         return true;
@@ -202,7 +237,7 @@ public sealed class AdalightDevice : IDisposable
     {
         if (_port is not { IsOpen: true }) return;
         var black = new byte[_ledCount * 3];
-        Send(black, onlyOnChange: false, keepAliveMs: 0);
+        Send(black, onlyOnChange: false, keepAliveMs: 0, force: true);
     }
 
     public bool TryReconnect(string portName, int baud, int ledCount)

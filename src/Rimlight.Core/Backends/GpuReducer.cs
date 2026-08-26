@@ -65,6 +65,25 @@ public sealed class GpuReducer : IDisposable
     /// <summary>Frames whose own reduction was read back rather than the previous one.</summary>
     public long FreshHits { get; private set; }
 
+    /// <summary>
+    /// True while a reduction the GPU has not finished with is still sitting in the ring.
+    ///
+    /// Worth knowing to the caller. When the card is busy the wait above gives up and the
+    /// frame is left in flight - and nothing looks at it again until the next frame
+    /// arrives, which on a 60 fps game is 16 ms later for a result that was ready in
+    /// three. That gap is the whole difference between the latency measured on video and
+    /// the latency measured in a game.
+    /// </summary>
+    public bool HasPending
+    {
+        get
+        {
+            for (int i = 0; i < RingSize; i++)
+                if (_pending[i]) return true;
+            return false;
+        }
+    }
+
     int _width, _height, _targetMip, _smallW, _smallH;
 
     byte _lastR, _lastG, _lastB;

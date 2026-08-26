@@ -1073,6 +1073,7 @@ public partial class MainWindow : Window
         // moment its colours went out of the port
         _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
                               $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
+                              $"; {Loc.T("stats.peak")} {_engine.FrameAgePeakMs:F1}" +
                               $"; {Loc.T("stats.dropped")} {_engine.FramesDropped}";
         _statValues[6].Text = capLine;
 

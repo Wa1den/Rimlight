@@ -72,13 +72,21 @@ public sealed class RimlightEngine : IDisposable
     public bool IsPaused => _paused;
 
     /// <summary>
-    /// How old the picture was when it reached the wire, averaged over the last second,
-    /// and the worst case in that second. Measured from the present time the compositor
-    /// reports, so it covers the whole path - capture, readback, relay, pacing, colour -
-    /// and is the number to watch when tuning any of them.
+    /// How old the picture was when it reached the wire. Measured from the present time
+    /// the compositor reports, so it covers the whole path - capture, readback, relay,
+    /// pacing, colour - and is the number to watch when tuning any of them.
+    ///
+    /// Three figures because one will not do: the average says how it feels, the rolling
+    /// worst catches the stalls, and the peak is the one that answers "did that ever
+    /// happen". The worst is taken over ten seconds rather than one - a figure that
+    /// resets every second cannot be read off a screen.
     /// </summary>
     public double FrameAgeMs { get; private set; }
     public double FrameAgeMaxMs { get; private set; }
+    public double FrameAgePeakMs { get; private set; }
+
+    /// <summary>Seconds the rolling worst looks back over.</summary>
+    const int AgeWindowSeconds = 10;
 
     /// <summary>Frames dropped because the serial port had not drained the previous one.</summary>
     public long FramesDropped => _device.FramesDropped;
@@ -199,6 +207,7 @@ public sealed class RimlightEngine : IDisposable
         _device.Open(cfg.PortName, cfg.BaudRate, _zones.Length);
 
         _restartCapture = false;
+        FrameAgeMs = FrameAgeMaxMs = FrameAgePeakMs = 0;
         _running = true;
         _outputThread = new Thread(OutputLoop)
         {
@@ -224,6 +233,10 @@ public sealed class RimlightEngine : IDisposable
         int framesThisWindow = 0;
         double ageSum = 0, ageMax = 0;
         int ageCount = 0;
+
+        // one bucket per second; the worst shown is the worst still inside the window
+        var ageSeconds = new double[AgeWindowSeconds];
+        int ageSecond = 0;
 
         // Rebuilt only when the capture object itself changes, which is why the swap was
         // moved onto this thread - see RestartCapture.
@@ -356,7 +369,16 @@ public sealed class RimlightEngine : IDisposable
             {
                 OutputFps = framesThisWindow * 1000.0 / fpsWindow.ElapsedMilliseconds;
                 FrameAgeMs = ageCount > 0 ? ageSum / ageCount : 0;
-                FrameAgeMaxMs = ageMax;
+
+                ageSeconds[ageSecond] = ageMax;
+                ageSecond = (ageSecond + 1) % ageSeconds.Length;
+
+                double rolling = 0;
+                foreach (double v in ageSeconds)
+                    if (v > rolling) rolling = v;
+                FrameAgeMaxMs = rolling;
+                if (ageMax > FrameAgePeakMs) FrameAgePeakMs = ageMax;
+
                 framesThisWindow = 0;
                 ageSum = ageMax = 0;
                 ageCount = 0;

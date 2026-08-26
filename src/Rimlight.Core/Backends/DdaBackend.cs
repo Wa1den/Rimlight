@@ -34,6 +34,17 @@ public sealed class DdaBackend : CaptureBackendBase
     /// </summary>
     const int AcquireTimeoutMs = 8;
 
+    /// <summary>
+    /// How long to leave a reduction sitting in the ring before looking at it again.
+    ///
+    /// Paced here rather than through the timeout of AcquireNextFrame, which is a kernel
+    /// wait like any other: asking it for one millisecond is not a promise of one
+    /// millisecond, and the rounding it does is the very thing being chased out.
+    /// </summary>
+    const double DrainPollMs = 0.5;
+
+    readonly PrecisionTimer _pacer = new();
+
     IntPtr _originalDesk = IntPtr.Zero;
     IntPtr _currentDesk = IntPtr.Zero;
 
@@ -62,6 +73,12 @@ public sealed class DdaBackend : CaptureBackendBase
             if (_originalDesk != IntPtr.Zero) Native.SetThreadDesktop(_originalDesk);
             if (_currentDesk != IntPtr.Zero) { Native.CloseDesktop(_currentDesk); _currentDesk = IntPtr.Zero; }
         }
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _pacer.Dispose();
     }
 
     void Sleep(int ms)
@@ -169,8 +186,15 @@ public sealed class DdaBackend : CaptureBackendBase
                 var sw = new Stopwatch();
                 while (ShouldRun)
                 {
+                    // With a reduction still in flight, do not settle in to wait for the
+                    // next frame - the one already queued will be ready long before it.
+                    // Ask whether anything is there, and if not, come back in half a
+                    // millisecond to see whether the GPU has finished.
+                    bool draining = reducer.HasPending;
+
                     sw.Restart();
-                    var res = dup.AcquireNextFrame(AcquireTimeoutMs, out OutduplFrameInfo info, out IDXGIResource? resource);
+                    var res = dup.AcquireNextFrame(draining ? 0u : AcquireTimeoutMs,
+                                                   out OutduplFrameInfo info, out IDXGIResource? resource);
 
                     if (res.Code == ResultCode.WaitTimeout.Code)
                     {
@@ -182,6 +206,11 @@ public sealed class DdaBackend : CaptureBackendBase
                                          reducer.ImageStride, reducer.LastImageStamp);
                             Metrics.NoteFrame(dr, dg, db, dblack, 0, 0);
                         }
+                        else if (draining) _pacer.Wait(DrainPollMs);
+
+                        // Only a real one counts. A poll we asked to return immediately is
+                        // not the screen going quiet, and counting it as one would paint
+                        // the whole status strip amber through every game.
                         else Metrics.NoteTimeout();
                         continue;
                     }

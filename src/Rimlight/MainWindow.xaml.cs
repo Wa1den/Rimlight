@@ -1074,7 +1074,8 @@ public partial class MainWindow : Window
         _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
                               $"; p99 {_engine.FrameAgeP99Ms:F1}" +
                               $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
-                              $"; {Loc.T("stats.dropped")} {_engine.FramesDropped}";
+                              $"; {Loc.T("stats.dropped")} {Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
+                              $", {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
         _statValues[6].Text = capLine;
 
         // the toggle applies live; the block only exists while the preview column does

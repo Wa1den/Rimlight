@@ -80,7 +80,11 @@ public abstract class CaptureBackendBase : ICaptureBackend
     /// </summary>
     readonly AutoResetEvent _frameSignal = new(false);
 
-    public WaitHandle FrameSignal => _frameSignal;
+    /// <summary>
+    /// Typed as the event rather than a bare WaitHandle so a consumer can clear it before
+    /// polling the image - see the output loop, which does exactly that.
+    /// </summary>
+    public EventWaitHandle FrameSignal => _frameSignal;
 
     /// <param name="stampQpc">
     /// When the picture this frame carries was actually put on screen, on the Stopwatch

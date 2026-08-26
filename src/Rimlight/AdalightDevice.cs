@@ -45,7 +45,17 @@ public sealed class AdalightDevice : IDisposable
     public long FramesSkipped { get; private set; }
 
     /// <summary>Frames thrown away because the previous one had not left the port yet.</summary>
-    public long FramesDropped { get; private set; }
+    public long FramesQueueFull { get; private set; }
+
+    /// <summary>
+    /// Frames thrown away for arriving sooner than the controller can take them.
+    ///
+    /// Counted apart from the queue: the two mean opposite things. A queue that will not
+    /// drain says the link is in trouble; frames arriving too soon says only that output
+    /// is being asked to run faster than the strip physically goes, which is a setting,
+    /// not a fault.
+    /// </summary>
+    public long FramesTooSoon { get; private set; }
 
     /// <summary>
     /// How many frames in a row may be dropped before one is forced through.
@@ -73,6 +83,12 @@ public sealed class AdalightDevice : IDisposable
     long _minGapTicks;
 
     long _lastSendStamp;
+
+    /// <summary>
+    /// Shortest period the strip can actually be driven at, in ms. Output paces itself by
+    /// this rather than discovering it one refused frame at a time.
+    /// </summary>
+    public double MinFramePeriodMs => _minGapTicks * 1000.0 / Stopwatch.Frequency;
 
     /// <param name="waitBootloader">
     /// Opening a closed port can pulse DTR and reboot the Nano, so a first connection waits
@@ -184,7 +200,7 @@ public sealed class AdalightDevice : IDisposable
         // all - see _minGapTicks. TickCount64 would not do here: it moves in 15.6 ms steps.
         if (!force && _everSent && nowStamp - _lastSendStamp < _minGapTicks)
         {
-            FramesDropped++;
+            FramesTooSoon++;
             return true;
         }
 
@@ -198,7 +214,7 @@ public sealed class AdalightDevice : IDisposable
             if (!force && _everSent && _dropStreak < MaxDropStreak && _port.BytesToWrite >= _frame.Length)
             {
                 _dropStreak++;
-                FramesDropped++;
+                FramesQueueFull++;
                 return true;
             }
         }

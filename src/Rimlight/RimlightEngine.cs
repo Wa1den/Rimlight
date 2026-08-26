@@ -95,7 +95,10 @@ public sealed class RimlightEngine : IDisposable
     const int AgeSamples = 512;
 
     /// <summary>Frames dropped because the serial port had not drained the previous one.</summary>
-    public long FramesDropped => _device.FramesDropped;
+    public long FramesQueueFull => _device.FramesQueueFull;
+
+    /// <summary>Frames dropped for arriving faster than the strip can be driven.</summary>
+    public long FramesTooSoon => _device.FramesTooSoon;
     public string PauseReason => _pauseReason;
     public LedZone[] Zones => _zones;
     public string PublisherStatus => _publisher.Status;
@@ -266,7 +269,13 @@ public sealed class RimlightEngine : IDisposable
 
         while (_running)
         {
-            double periodMs = 1000.0 / Math.Clamp(_cfg.MaxFps, 1, 240);
+            // Never ask for a rate the strip cannot take. At 1 Mbaud a 122-LED frame is
+            // 3.7 ms on the wire and another 3.7 ms latching into the strip, so anything
+            // above about 135 fps is a request the port can only answer by refusing - and
+            // a refusal is worse than a slower cadence, because the colours then wait for
+            // a whole further period. The setting stays the ceiling; this is the floor.
+            double periodMs = Math.Max(1000.0 / Math.Clamp(_cfg.MaxFps, 1, 240),
+                                       _device.MinFramePeriodMs);
             double startMs = sw.Elapsed.TotalMilliseconds;
 
             // reducing faster than the strip is driven is wasted GPU work, so the capture
@@ -312,6 +321,12 @@ public sealed class RimlightEngine : IDisposable
                 lastMs = sw.Elapsed.TotalMilliseconds;
                 continue;
             }
+
+            // Consume the signal before reading the frame rather than after. The image is
+            // taken by polling, so a publish already picked up this way would otherwise
+            // leave the event set and wake the loop a second time for a frame it has
+            // seen - a pass that sends again too soon and is refused for it.
+            _capture?.FrameSignal.Reset();
 
             int w = 0, h = 0, stride = 0;
             long stamp = 0;

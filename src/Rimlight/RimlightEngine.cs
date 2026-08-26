@@ -530,16 +530,51 @@ public sealed class RimlightEngine : IDisposable
             "задержка сред={0:F1} p99={1:F1} макс10с={2:F1} | " +
             "этапы экран-захват={3:F1} свод={4:F1} реле={5:F1} отдача={6:F1} (из них запись={7:F1}) | " +
             "кадров захвата={8} вывод={9:F1} fps | мимо={10} | " +
-            "отброшено очередь={11} темп={12} | источник={13} диодов={14}",
+            "отброшено очередь={11} темп={12} | источник={13} диодов={14} | окно={15}",
             FrameAgeMs, FrameAgeP99Ms, FrameAgeMaxMs,
             StageGrabMs, StageReduceMs, StageRelayMs, StageOutMs, StageWriteMs,
             capFrames - lastCapFrames, OutputFps,
             skipped - lastSkipped,
             FramesQueueFull, FramesTooSoon,
-            _capture?.ActiveSource ?? "-", _zones.Length));
+            _capture?.ActiveSource ?? "-", _zones.Length, ForegroundName()));
 
         lastCapFrames = capFrames;
         lastSkipped = skipped;
+    }
+
+    /// <summary>
+    /// What is in the foreground, for the log line above.
+    ///
+    /// Diagnostic only, and deliberately crude: reading a session of measurements back is
+    /// guesswork without knowing whether the game was even running at the time, and the
+    /// window title answers that at a glance. Process name alongside it, because a game
+    /// that renames its window mid-scene still keeps the same executable.
+    /// </summary>
+    static string ForegroundName()
+    {
+        try
+        {
+            IntPtr hwnd = Native.GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return "-";
+
+            string title = Native.GetWindowTitle(hwnd);
+            if (title.Length > 48) title = title[..48];
+
+            string exe = "?";
+            Native.GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid != 0)
+            {
+                using var proc = Process.GetProcessById((int)pid);
+                exe = proc.ProcessName;
+            }
+
+            return $"\"{title}\" [{exe}]";
+        }
+        catch
+        {
+            // the window can close between the two calls; a log line is not worth a throw
+            return "-";
+        }
     }
 
     /// <summary>

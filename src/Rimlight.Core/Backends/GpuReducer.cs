@@ -72,6 +72,7 @@ public sealed class GpuReducer : IDisposable
     }
 
     int _width, _height, _targetMip, _smallW, _smallH;
+    bool _loggedSource;
 
     byte _lastR, _lastG, _lastB;
     bool _lastBlack;
@@ -114,11 +115,23 @@ public sealed class GpuReducer : IDisposable
         _width = width;
         _height = height;
 
+        // Only the levels actually read back. MipLevels = 0 asks for the whole chain down
+        // to 1x1, and every level of it is a separate pass with a fixed price: for a
+        // 3440-wide frame that is twelve passes where five are wanted, and the seven extra
+        // move almost no pixels while still costing their turn on the card.
+        int lastMip = 0;
+        while ((width >> lastMip) > _targetMaxWidth && (width >> lastMip) > 1) lastMip++;
+
+        // the snapshot reads a 256-wide level, which must exist even when the reduction
+        // itself wants something coarser
+        int snapNeeded = 0;
+        while ((width >> snapNeeded) > 256 && (width >> snapNeeded) > 1) snapNeeded++;
+
         _mipTex = _device.CreateTexture2D(new Texture2DDescription
         {
             Width = (uint)width,
             Height = (uint)height,
-            MipLevels = 0,          // 0 asks D3D for the full chain
+            MipLevels = (uint)(Math.Max(lastMip, snapNeeded) + 1),
             ArraySize = 1,
             Format = Format.B8G8R8A8_UNorm,
             SampleDescription = new SampleDescription(1, 0),
@@ -171,7 +184,8 @@ public sealed class GpuReducer : IDisposable
             Height = (uint)_snapH
         });
 
-        ProbeLog.Log("gpu", $"редьюсер {width}x{height} -> mip {_targetMip} = {_smallW}x{_smallH}, кольцо {RingSize}");
+        ProbeLog.Log("gpu", $"редьюсер {width}x{height} -> mip {_targetMip} = {_smallW}x{_smallH}, " +
+                            $"уровней {levels}, кольцо {RingSize}");
     }
 
     /// <summary>
@@ -185,6 +199,17 @@ public sealed class GpuReducer : IDisposable
                                                                     long present = 0, long acquire = 0)
     {
         var fd = frame.Description;
+
+        // Logged once because it decides whether the full-frame copy below is avoidable:
+        // the frame can be sampled straight from a shader only if capture handed it over
+        // with ShaderResource on it, and every source is free not to.
+        if (!_loggedSource)
+        {
+            _loggedSource = true;
+            ProbeLog.Log("gpu", $"кадр от захвата: {fd.Width}x{fd.Height} {fd.Format} " +
+                                $"bind={fd.BindFlags} usage={fd.Usage} misc={fd.MiscFlags}");
+        }
+
         Ensure((int)fd.Width, (int)fd.Height);
 
         // queue this frame's downscale into the next ring slot

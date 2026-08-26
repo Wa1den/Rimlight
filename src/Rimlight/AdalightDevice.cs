@@ -70,6 +70,16 @@ public sealed class AdalightDevice : IDisposable
     int _dropStreak;
 
     /// <summary>
+    /// How long the last write to the port took.
+    ///
+    /// Not a formality: the write waits for the driver to take the frame, and at 1 Mbaud
+    /// 372 bytes are several milliseconds of wire time. That is a real part of the delay
+    /// and it is not ours to remove, so it is worth being able to see it apart from the
+    /// work that is.
+    /// </summary>
+    public double LastWriteMs { get; private set; }
+
+    /// <summary>
     /// Shortest gap the controller can survive between frames, worked out from the baud
     /// rate and the LED count in <see cref="Open"/>.
     ///
@@ -89,6 +99,22 @@ public sealed class AdalightDevice : IDisposable
     /// this rather than discovering it one refused frame at a time.
     /// </summary>
     public double MinFramePeriodMs => _minGapTicks * 1000.0 / Stopwatch.Frequency;
+
+    /// <summary>
+    /// How long until the controller can take another frame, in ms; zero when it is ready
+    /// now. Lets the caller wait out the remainder instead of having a frame refused -
+    /// with the idle ticks gone there is no next tick to carry a refused one, so it would
+    /// sit until the frame after that.
+    /// </summary>
+    public double ReadyInMs
+    {
+        get
+        {
+            if (!_everSent) return 0;
+            long left = _minGapTicks - (Stopwatch.GetTimestamp() - _lastSendStamp);
+            return left <= 0 ? 0 : left * 1000.0 / Stopwatch.Frequency;
+        }
+    }
 
     /// <param name="waitBootloader">
     /// Opening a closed port can pulse DTR and reboot the Nano, so a first connection waits
@@ -229,7 +255,9 @@ public sealed class AdalightDevice : IDisposable
 
         try
         {
+            long writeStart = Stopwatch.GetTimestamp();
             _port.Write(_frame, 0, _frame.Length);
+            LastWriteMs = (Stopwatch.GetTimestamp() - writeStart) * 1000.0 / Stopwatch.Frequency;
         }
         catch (Exception ex)
         {

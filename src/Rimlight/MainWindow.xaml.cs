@@ -29,8 +29,8 @@ public partial class MainWindow : Window
 
     readonly List<UIElement> _pages = new();
 
-    readonly TextBlock[] _statLabels = new TextBlock[7];
-    readonly TextBlock[] _statValues = new TextBlock[7];
+    readonly TextBlock[] _statLabels = new TextBlock[8];
+    readonly TextBlock[] _statValues = new TextBlock[8];
 
     /// <summary>Window width to come back to when the preview is switched on again.</summary>
     double _wideWidth;
@@ -1062,7 +1062,8 @@ public partial class MainWindow : Window
         _statLabels[3].Text = Loc.T("stats.output") + ":";
         _statLabels[4].Text = Loc.T("stats.port") + ":";
         _statLabels[5].Text = Loc.T("stats.latency") + ":";
-        _statLabels[6].Text = Loc.T("stats.sources") + ":";
+        _statLabels[6].Text = Loc.T("stats.stages") + ":";
+        _statLabels[7].Text = Loc.T("stats.sources") + ":";
 
         _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
         _statValues[1].Text = activeNow;
@@ -1076,7 +1077,11 @@ public partial class MainWindow : Window
                               $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
                               $"; {Loc.T("stats.dropped")} {Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
                               $", {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
-        _statValues[6].Text = capLine;
+        _statValues[6].Text = $"{Loc.T("stats.stage.grab")} {_engine.StageGrabMs:F1}" +
+                              $"; {Loc.T("stats.stage.reduce")} {_engine.StageReduceMs:F1}" +
+                              $"; {Loc.T("stats.stage.relay")} {_engine.StageRelayMs:F1}" +
+                              $"; {Loc.T("stats.stage.out")} {_engine.StageOutMs:F1}";
+        _statValues[7].Text = capLine;
 
         // the toggle applies live; the block only exists while the preview column does
         StatsCard.Visibility = _cfg.ShowStats ? Visibility.Visible : Visibility.Collapsed;

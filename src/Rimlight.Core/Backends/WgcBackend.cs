@@ -199,7 +199,7 @@ public sealed class WgcBackend : CaptureBackendBase
                     double acquireMs = sw.Elapsed.TotalMilliseconds;
 
                     sw.Restart();
-                    var (r, g, b, black, valid) = reducer.Reduce(tex, stamp);
+                    var (r, g, b, black, valid) = reducer.Reduce(tex, stamp, stamp);
                     double reduceMs = sw.Elapsed.TotalMilliseconds;
 
                     Interlocked.Exchange(ref _lastFrameTicks, DateTime.UtcNow.Ticks);
@@ -212,10 +212,9 @@ public sealed class WgcBackend : CaptureBackendBase
                     }
 
                     PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
-                                 reducer.ImageStride, reducer.LastImageStamp);
+                                 reducer.ImageStride, reducer.LastImageStamps);
                     Metrics.NoteFrame(r, g, b, black, acquireMs, reduceMs);
                     Metrics.NoteSkipped(reducer.Skipped);
-                    Metrics.NoteFresh(reducer.FreshHits);
                     if (black) ProbeLog.LogStatusChange(Name, BackendStatus.Black, "ЧЁРНЫЙ КАДР");
                     else ProbeLog.LogStatusChange(Name, BackendStatus.Ok, "OK");
                 }
@@ -243,7 +242,7 @@ public sealed class WgcBackend : CaptureBackendBase
                     if (reducer.TryDrain(out byte dr, out byte dg, out byte db, out bool dblack))
                     {
                         PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
-                                     reducer.ImageStride, reducer.LastImageStamp);
+                                     reducer.ImageStride, reducer.LastImageStamps);
                         Metrics.NoteFrame(dr, dg, db, dblack, 0, 0);
                         Interlocked.Exchange(ref _lastFrameTicks, DateTime.UtcNow.Ticks);
                         continue;

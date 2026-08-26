@@ -203,7 +203,7 @@ public sealed class DdaBackend : CaptureBackendBase
                         if (reducer.TryDrain(out byte dr, out byte dg, out byte db, out bool dblack))
                         {
                             PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
-                                         reducer.ImageStride, reducer.LastImageStamp);
+                                         reducer.ImageStride, reducer.LastImageStamps);
                             Metrics.NoteFrame(dr, dg, db, dblack, 0, 0);
                         }
                         else if (draining) _pacer.Wait(DrainPollMs);
@@ -223,6 +223,7 @@ public sealed class DdaBackend : CaptureBackendBase
                     }
 
                     double acquireMs = sw.Elapsed.TotalMilliseconds;
+                    long acquiredAt = Stopwatch.GetTimestamp();
 
                     try
                     {
@@ -236,7 +237,7 @@ public sealed class DdaBackend : CaptureBackendBase
 
                         using var tex = resource!.QueryInterface<ID3D11Texture2D>();
                         sw.Restart();
-                        var (r, g, b, black, valid) = reducer.Reduce(tex, PresentStamp(info));
+                        var (r, g, b, black, valid) = reducer.Reduce(tex, PresentStamp(info), acquiredAt);
                         double reduceMs = sw.Elapsed.TotalMilliseconds;
 
                         if (!valid) continue;   // ring still warming up
@@ -251,13 +252,12 @@ public sealed class DdaBackend : CaptureBackendBase
                         // within a millisecond or two. Sending both means the output thread
                         // wakes twice per frame and the port throws away the fresher of the
                         // two for arriving too soon after the staler one.
+                        Metrics.NoteSkipped(reducer.Skipped);
                         if (!reducer.LastReadFresh) continue;
 
                         PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
-                                     reducer.ImageStride, reducer.LastImageStamp);
+                                     reducer.ImageStride, reducer.LastImageStamps);
                         Metrics.NoteFrame(r, g, b, black, acquireMs, reduceMs);
-                        Metrics.NoteSkipped(reducer.Skipped);
-                        Metrics.NoteFresh(reducer.FreshHits);
                         if (black) ProbeLog.LogStatusChange(Name, BackendStatus.Black, "ЧЁРНЫЙ КАДР");
                         else ProbeLog.LogStatusChange(Name, BackendStatus.Ok, "OK");
                     }

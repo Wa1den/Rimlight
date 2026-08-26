@@ -39,31 +39,8 @@ public sealed class GpuReducer : IDisposable
 
     readonly ID3D11Texture2D?[] _staging = new ID3D11Texture2D?[RingSize];
     readonly bool[] _pending = new bool[RingSize];
-    readonly long[] _slotStamp = new long[RingSize];
+    readonly FrameStamps[] _slotStamp = new FrameStamps[RingSize];
     int _writeIdx;
-
-    /// <summary>
-    /// How long the frame just queued is given to finish before an older one is taken.
-    ///
-    /// Without this the ring always hands back the previous frame, because the map is
-    /// attempted the instant the copy is queued and the GPU has obviously not finished
-    /// yet - a whole capture frame of latency, every frame. A short wait recovers it
-    /// whenever the card has headroom, which is the case for video and the desktop.
-    /// </summary>
-    static readonly long FreshWaitTicks = (long)(Stopwatch.Frequency * 0.0015);   // 1.5 ms
-
-    /// <summary>
-    /// Under a game that keeps the GPU saturated the wait never pays off, and paying it
-    /// on every frame would make the fallback frame staler than it used to be. Misses in
-    /// a row switch the wait off; a periodic probe switches it back on when the load ends.
-    /// </summary>
-    const int FreshMissLimit = 4;
-    const int FreshProbeEvery = 120;
-
-    int _freshMisses, _sinceProbe;
-
-    /// <summary>Frames whose own reduction was read back rather than the previous one.</summary>
-    public long FreshHits { get; private set; }
 
     /// <summary>
     /// Whether the last read returned the frame just handed in, or an older ring slot.
@@ -113,11 +90,11 @@ public sealed class GpuReducer : IDisposable
     public byte[] LastImage { get; private set; } = Array.Empty<byte>();
 
     /// <summary>
-    /// When the picture in <see cref="LastImage"/> was put on screen, on the Stopwatch
-    /// clock. Carried per ring slot, because the slot read back is usually not the one
-    /// just queued - stamping at readback would hide exactly the delay worth measuring.
+    /// Where the picture in <see cref="LastImage"/> has been. Carried per ring slot,
+    /// because the slot read back is usually not the one just queued - stamping at
+    /// readback would hide exactly the delay worth measuring.
     /// </summary>
-    public long LastImageStamp { get; private set; }
+    public FrameStamps LastImageStamps { get; private set; }
     public int ImageWidth { get; private set; }
     public int ImageHeight { get; private set; }
     public int ImageStride { get; private set; }
@@ -178,7 +155,7 @@ public sealed class GpuReducer : IDisposable
         {
             _staging[i] = _device.CreateTexture2D(stagingDesc);
             _pending[i] = false;
-            _slotStamp[i] = 0;
+            _slotStamp[i] = default;
         }
         _writeIdx = 0;
         _hasResult = false;
@@ -201,11 +178,11 @@ public sealed class GpuReducer : IDisposable
     /// Returns valid=false while the ring is still warming up, so the first frames are
     /// not miscounted as black - black frames are the signal this probe exists to catch.
     /// </summary>
-    /// <param name="stampQpc">
-    /// When this frame was presented, on the Stopwatch clock. Travels with the ring slot
-    /// so the consumer can tell how old the picture it finally gets actually is.
-    /// </param>
-    public (byte r, byte g, byte b, bool isBlack, bool valid) Reduce(ID3D11Texture2D frame, long stampQpc = 0)
+    /// <param name="present">When this frame was put on screen, on the Stopwatch clock.</param>
+    /// <param name="acquire">When capture got hold of it. Both travel with the ring slot,
+    /// so the consumer can tell not only how old the picture is but where it aged.</param>
+    public (byte r, byte g, byte b, bool isBlack, bool valid) Reduce(ID3D11Texture2D frame,
+                                                                    long present = 0, long acquire = 0)
     {
         var fd = frame.Description;
         Ensure((int)fd.Width, (int)fd.Height);
@@ -214,40 +191,36 @@ public sealed class GpuReducer : IDisposable
         _context.CopySubresourceRegion(_mipTex!, 0, 0, 0, 0, frame, 0);
         _context.GenerateMips(_srv!);
         _context.CopySubresourceRegion(_staging[_writeIdx]!, 0, 0, 0, 0, _mipTex!, (uint)_targetMip);
+
+        // Hand the work to the card now instead of letting it sit in the command buffer.
+        // The immediate context batches until something forces a submit, so without this
+        // the GPU had not even started when the readback was first tried - which is why
+        // the wait below never once succeeded in a whole session of measurements, idle
+        // desktop included. A non-blocking Map does not flush; only this does.
+        _context.Flush();
+
         _pending[_writeIdx] = true;
-        _slotStamp[_writeIdx] = stampQpc != 0 ? stampQpc : Stopwatch.GetTimestamp();
+        _slotStamp[_writeIdx] = present != 0
+            ? new FrameStamps(present, acquire != 0 ? acquire : present, 0)
+            : FrameStamps.Now();
         _writeIdx = (_writeIdx + 1) % RingSize;
-
-        // The slot just queued is the one worth having: everything else in the ring is at
-        // least one capture frame stale by definition.
-        _sinceProbe++;
-        if (_freshMisses < FreshMissLimit || _sinceProbe >= FreshProbeEvery)
-        {
-            _sinceProbe = 0;
-            long deadline = Stopwatch.GetTimestamp() + FreshWaitTicks;
-            while (true)
-            {
-                if (TryReadSlot(RingSize - 1, out var fresh))
-                {
-                    _freshMisses = 0;
-                    FreshHits++;
-                    LastReadFresh = true;
-                    return (fresh.r, fresh.g, fresh.b, fresh.isBlack, true);
-                }
-                if (Stopwatch.GetTimestamp() >= deadline) break;
-
-                // the GPU is the one working here, so back off rather than burn the core
-                Thread.SpinWait(128);
-            }
-            _freshMisses++;
-        }
 
         // Walk newest-first and take the first slot the GPU has already finished with.
         // MapFlags.DoNotWait turns "not ready" into a failed Result instead of a stall.
-        LastReadFresh = false;
+        //
+        // The slot just queued is never among them in practice. A short spin waiting for
+        // it used to live here, on the theory that an idle card would finish in time;
+        // measurement said otherwise - not one hit in a session, desktop included, because
+        // the round trip is about four milliseconds however quiet the card is. The caller
+        // polls the ring anyway, so the spin bought nothing and cost a core.
         for (int k = RingSize - 1; k >= 0; k--)
             if (TryReadSlot(k, out var result))
+            {
+                LastReadFresh = k == RingSize - 1;
                 return (result.r, result.g, result.b, result.isBlack, true);
+            }
+
+        LastReadFresh = false;
 
         Skipped++;
         return (_lastR, _lastG, _lastB, _lastBlack, _hasResult);
@@ -275,7 +248,9 @@ public sealed class GpuReducer : IDisposable
             if (LastImage.Length != span.Length) LastImage = new byte[span.Length];
             span.CopyTo(LastImage);
             ImageWidth = _smallW; ImageHeight = _smallH; ImageStride = (int)map.RowPitch;
-            LastImageStamp = _slotStamp[idx];
+
+            // the readback is finished at this exact point, which is what Ready means
+            LastImageStamps = _slotStamp[idx] with { Ready = Stopwatch.GetTimestamp() };
 
             result = ColorMath.AverageBgra(span, _smallW, _smallH, (int)map.RowPitch);
 
@@ -343,8 +318,6 @@ public sealed class GpuReducer : IDisposable
         {
             if (!TryReadSlot(k, out var result)) continue;
 
-            // the ring is empty now, so waiting on a fresh slot is worth trying again
-            _freshMisses = 0;
             LastReadFresh = true;
 
             r = result.r; g = result.g; b = result.b; isBlack = result.isBlack;

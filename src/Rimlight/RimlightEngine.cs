@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using Rimlight.Capture;
 using Rimlight.Capture.Backends;
@@ -87,6 +88,20 @@ public sealed class RimlightEngine : IDisposable
     public double FrameAgeMs { get; private set; }
     public double FrameAgeMaxMs { get; private set; }
     public double FrameAgeP99Ms { get; private set; }
+
+    /// <summary>
+    /// The same wait, split into the three places it can happen: from the picture being
+    /// presented to capture holding it, from there to the reduced pixels being back in
+    /// main memory, and from there to the wire. One total says how bad it is but never
+    /// where, and where is the only thing worth knowing when deciding what to change.
+    /// </summary>
+    public double StageGrabMs { get; private set; }
+    public double StageReduceMs { get; private set; }
+    public double StageRelayMs { get; private set; }
+    public double StageOutMs { get; private set; }
+
+    /// <summary>The part of the last stage that is pure wire time, for comparison.</summary>
+    public double StageWriteMs { get; private set; }
 
     /// <summary>Seconds the rolling worst looks back over.</summary>
     const int AgeWindowSeconds = 10;
@@ -217,6 +232,7 @@ public sealed class RimlightEngine : IDisposable
 
         _restartCapture = false;
         FrameAgeMs = FrameAgeMaxMs = FrameAgeP99Ms = 0;
+        StageGrabMs = StageReduceMs = StageRelayMs = StageOutMs = StageWriteMs = 0;
         _running = true;
         _outputThread = new Thread(OutputLoop)
         {
@@ -255,7 +271,12 @@ public sealed class RimlightEngine : IDisposable
         // Stamp of the newest picture folded into the output buffer, held until that
         // buffer actually reaches the wire. Timing it where the frame was processed
         // instead would have hidden the very delay a refused write causes.
-        long pendingStamp = 0;
+        FrameStamps pendingStamps = default;
+        double grabSum = 0, reduceSum = 0, relaySum = 0, outSum = 0, writeSum = 0;
+        long takenAt = 0;
+
+        // totals from the previous second, so the log can show what happened in this one
+        long lastCapFrames = 0, lastSkipped = 0;
 
         // when capture last handed over a frame, to tell a still screen from a moving one
         double lastFrameMs = 0;
@@ -332,10 +353,14 @@ public sealed class RimlightEngine : IDisposable
             _capture?.FrameSignal.Reset();
 
             int w = 0, h = 0, stride = 0;
-            long stamp = 0;
+            FrameStamps stamps = default;
             bool haveNewFrame = _capture != null &&
-                _capture.TryGetImage(ref _image, ref _imageVersion, out w, out h, out stride, out stamp) &&
+                _capture.TryGetImage(ref _image, ref _imageVersion, out w, out h, out stride, out stamps) &&
                 w > 0 && h > 0;
+
+            // when this thread got its hands on the frame, splitting the way here from
+            // the way out - the two are worth telling apart, and one of them is not ours
+            if (haveNewFrame) takenAt = Stopwatch.GetTimestamp();
 
             if (haveNewFrame)
             {
@@ -388,6 +413,16 @@ public sealed class RimlightEngine : IDisposable
             if (haveNewFrame) lastFrameMs = startMs;
             bool flowing = lastFrameMs > 0 && startMs - lastFrameMs < periodMs * 2;
 
+            // A frame arriving inside the controller's cycle is worth waiting out. The
+            // remainder is a couple of milliseconds, and with the idle ticks suppressed
+            // there is no next tick to carry a refused frame - it would sit until the
+            // frame after it, which is the whole capture period away.
+            if (haveNewFrame)
+            {
+                double readyIn = _device.ReadyInMs;
+                if (readyIn > 0.2) pacer.Wait(readyIn);
+            }
+
             long sentBefore = _device.FramesSent;
 
             if (_output.Length > 0 && (haveNewFrame || !flowing) &&
@@ -402,15 +437,24 @@ public sealed class RimlightEngine : IDisposable
                 }
             }
 
-            if (haveNewFrame && stamp != 0) pendingStamp = stamp;
+            if (haveNewFrame && !stamps.IsEmpty) pendingStamps = stamps;
 
             // Only frames that carried new pixels, and only once they are on the wire: a
             // keepalive resend says nothing about how fast the picture gets through, and
             // a frame the port refused has not got through at all yet.
-            if (pendingStamp != 0 && _device.FramesSent != sentBefore)
+            if (!pendingStamps.IsEmpty && _device.FramesSent != sentBefore)
             {
-                double ageMs = (Stopwatch.GetTimestamp() - pendingStamp) * 1000.0 / Stopwatch.Frequency;
-                pendingStamp = 0;
+                long sentAt = Stopwatch.GetTimestamp();
+                double perMs = 1000.0 / Stopwatch.Frequency;
+
+                grabSum += (pendingStamps.Acquire - pendingStamps.Present) * perMs;
+                reduceSum += (pendingStamps.Ready - pendingStamps.Acquire) * perMs;
+                relaySum += (takenAt - pendingStamps.Ready) * perMs;
+                outSum += (sentAt - takenAt) * perMs;
+                writeSum += _device.LastWriteMs;
+
+                double ageMs = (sentAt - pendingStamps.Present) * perMs;
+                pendingStamps = default;
                 ageSum += ageMs;
                 ageCount++;
                 if (ageMs > ageMax) ageMax = ageMs;
@@ -424,6 +468,14 @@ public sealed class RimlightEngine : IDisposable
             {
                 OutputFps = framesThisWindow * 1000.0 / fpsWindow.ElapsedMilliseconds;
                 FrameAgeMs = ageCount > 0 ? ageSum / ageCount : 0;
+                StageGrabMs = ageCount > 0 ? grabSum / ageCount : 0;
+                StageReduceMs = ageCount > 0 ? reduceSum / ageCount : 0;
+                StageRelayMs = ageCount > 0 ? relaySum / ageCount : 0;
+                StageOutMs = ageCount > 0 ? outSum / ageCount : 0;
+                StageWriteMs = ageCount > 0 ? writeSum / ageCount : 0;
+                grabSum = reduceSum = relaySum = outSum = writeSum = 0;
+
+                LogTelemetry(ref lastCapFrames, ref lastSkipped);
 
                 ageSeconds[ageSecond] = ageMax;
                 ageSecond = (ageSecond + 1) % ageSeconds.Length;
@@ -456,6 +508,38 @@ public sealed class RimlightEngine : IDisposable
             if (waitSet.Length == 2 && pacer.Arm(restMs)) WaitHandle.WaitAny(waitSet);
             else pacer.Wait(restMs);
         }
+    }
+
+    /// <summary>
+    /// One line a second with every number the latency work turns on, so a session can be
+    /// read off the file afterwards instead of off the panel by eye - which is no way to
+    /// catch something that happens once in a hundred frames.
+    ///
+    /// Rides on the existing log switch: it costs a line a second, and anyone who has
+    /// turned the log on is already looking into something.
+    /// </summary>
+    void LogTelemetry(ref long lastCapFrames, ref long lastSkipped)
+    {
+        if (!_cfg.WriteLog) return;
+
+        var snap = _capture?.Metrics.Snapshot();
+        long capFrames = snap?.Frames ?? 0;
+        long skipped = snap?.Skipped ?? 0;
+
+        ProbeLog.Log("замер", string.Format(CultureInfo.InvariantCulture,
+            "задержка сред={0:F1} p99={1:F1} макс10с={2:F1} | " +
+            "этапы экран-захват={3:F1} свод={4:F1} реле={5:F1} отдача={6:F1} (из них запись={7:F1}) | " +
+            "кадров захвата={8} вывод={9:F1} fps | мимо={10} | " +
+            "отброшено очередь={11} темп={12} | источник={13} диодов={14}",
+            FrameAgeMs, FrameAgeP99Ms, FrameAgeMaxMs,
+            StageGrabMs, StageReduceMs, StageRelayMs, StageOutMs, StageWriteMs,
+            capFrames - lastCapFrames, OutputFps,
+            skipped - lastSkipped,
+            FramesQueueFull, FramesTooSoon,
+            _capture?.ActiveSource ?? "-", _zones.Length));
+
+        lastCapFrames = capFrames;
+        lastSkipped = skipped;
     }
 
     /// <summary>

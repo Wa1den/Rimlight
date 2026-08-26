@@ -4,6 +4,26 @@ using System.Threading;
 
 namespace Rimlight.Capture.Backends;
 
+/// <summary>
+/// Where a frame was at each step of the way, on the Stopwatch clock.
+///
+/// One number for the whole path says how bad it is but never where, and guessing at
+/// where has already cost several rounds of the wrong fix. Present comes from the
+/// compositor, Acquire is when capture got its hands on the frame, Ready is when the
+/// reduced pixels were back in main memory.
+/// </summary>
+public readonly record struct FrameStamps(long Present, long Acquire, long Ready)
+{
+    public bool IsEmpty => Present == 0;
+
+    /// <summary>For paths with nothing better to say than "now".</summary>
+    public static FrameStamps Now()
+    {
+        long t = Stopwatch.GetTimestamp();
+        return new FrameStamps(t, t, t);
+    }
+}
+
 public interface ICaptureBackend : IDisposable
 {
     string Name { get; }
@@ -67,7 +87,7 @@ public abstract class CaptureBackendBase : ICaptureBackend
     byte[] _image = Array.Empty<byte>();
     int _imgW, _imgH, _imgStride;
     long _imageVersion;
-    long _imageStamp;
+    FrameStamps _imageStamps;
 
     /// <summary>
     /// Raised on every published frame, so a consumer can wake on the frame itself instead
@@ -86,19 +106,19 @@ public abstract class CaptureBackendBase : ICaptureBackend
     /// </summary>
     public EventWaitHandle FrameSignal => _frameSignal;
 
-    /// <param name="stampQpc">
-    /// When the picture this frame carries was actually put on screen, on the Stopwatch
-    /// clock. Passed along rather than taken here so it survives the relay through the
-    /// hybrid: what matters is the age of the picture, not of the copy.
+    /// <param name="stamps">
+    /// Where this frame has been, on the Stopwatch clock. Passed in rather than taken
+    /// here so it survives the relay through the hybrid: what matters is the age of the
+    /// picture, not of the copy.
     /// </param>
-    protected void PublishImage(byte[] src, int width, int height, int stride, long stampQpc = 0)
+    protected void PublishImage(byte[] src, int width, int height, int stride, FrameStamps stamps = default)
     {
         lock (_imageLock)
         {
             if (_image.Length != src.Length) _image = new byte[src.Length];
             Array.Copy(src, _image, src.Length);
             _imgW = width; _imgH = height; _imgStride = stride;
-            _imageStamp = stampQpc != 0 ? stampQpc : Stopwatch.GetTimestamp();
+            _imageStamps = stamps.IsEmpty ? FrameStamps.Now() : stamps;
             _imageVersion++;
         }
         _frameSignal.Set();
@@ -108,13 +128,13 @@ public abstract class CaptureBackendBase : ICaptureBackend
     public bool TryGetImage(ref byte[] dest, ref long version, out int width, out int height, out int stride) =>
         TryGetImage(ref dest, ref version, out width, out height, out stride, out _);
 
-    /// <param name="stampQpc">When the picture was put on screen; 0 when unknown.</param>
+    /// <param name="stamps">Where the picture has been on its way here.</param>
     public bool TryGetImage(ref byte[] dest, ref long version, out int width, out int height, out int stride,
-                            out long stampQpc)
+                            out FrameStamps stamps)
     {
         lock (_imageLock)
         {
-            width = _imgW; height = _imgH; stride = _imgStride; stampQpc = _imageStamp;
+            width = _imgW; height = _imgH; stride = _imgStride; stamps = _imageStamps;
             if (_imageVersion == version || _image.Length == 0) return false;
             if (dest.Length != _image.Length) dest = new byte[_image.Length];
             Array.Copy(_image, dest, _image.Length);
@@ -183,7 +203,7 @@ public abstract class CaptureBackendBase : ICaptureBackend
     {
         var s = Metrics.Snapshot();
         return $"кадров={s.Frames} таймаутов={s.Timeouts} ошибок={s.Errors} чёрных={s.BlackFrames} тёмных={s.DarkSpikes} " +
-               $"пропущено={s.Skipped} свежих={s.Fresh} " +
+               $"пропущено={s.Skipped} " +
                $"fps5s={s.FpsAvg5s:F1} p50={s.P50Ms:F1}мс p99={s.P99Ms:F1}мс " +
                $"получение={s.AcquireMs:F2}мс свод={s.ReduceMs:F2}мс";
     }

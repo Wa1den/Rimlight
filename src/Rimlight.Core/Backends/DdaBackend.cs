@@ -154,8 +154,6 @@ public sealed class DdaBackend : CaptureBackendBase
         D3D11.D3D11CreateDevice(chosenAdapter, DriverType.Unknown, DeviceCreationFlags.BgraSupport,
             null!, out ID3D11Device device, out ID3D11DeviceContext context).CheckError();
 
-        RaiseGpuPriority(device);
-
         using (chosenAdapter)
         using (chosenOutput)
         using (device)
@@ -276,32 +274,6 @@ public sealed class DdaBackend : CaptureBackendBase
             }
         }
     }
-
-    /// <summary>
-    /// Asks the scheduler to let our work onto the card sooner.
-    ///
-    /// The reduction is one copy and a few small passes, but it queues behind everything
-    /// the game has already handed over: measured at 4.5 ms on an idle desktop against
-    /// 7.2 ms in a game, and that difference is waiting, not working. Raising the priority
-    /// of so little work cannot starve the thing we are reading from - and if the driver
-    /// refuses, nothing is lost but a line in the log.
-    /// </summary>
-    void RaiseGpuPriority(ID3D11Device device)
-    {
-        try
-        {
-            using var dxgi = device.QueryInterface<IDXGIDevice>();
-            dxgi.SetGPUThreadPriority(GpuPriority);
-            ProbeLog.Log(Name, $"приоритет GPU: {GpuPriority}");
-        }
-        catch (Exception ex)
-        {
-            ProbeLog.Log(Name, "приоритет GPU не поднялся: " + Short(ex));
-        }
-    }
-
-    /// <summary>Above normal but well short of the ceiling of 7, which is realtime-ish.</summary>
-    const int GpuPriority = 5;
 
     /// <summary>
     /// When the frame was actually put on screen, on the Stopwatch clock.

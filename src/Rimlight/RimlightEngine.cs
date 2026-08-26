@@ -520,7 +520,7 @@ public sealed class RimlightEngine : IDisposable
     /// </summary>
     void LogTelemetry(ref long lastCapFrames, ref long lastSkipped)
     {
-        if (!_cfg.WriteLog) return;
+        if (!_cfg.WriteLog || !_cfg.DetailedStats) return;
 
         var snap = _capture?.Metrics.Snapshot();
         long capFrames = snap?.Frames ?? 0;

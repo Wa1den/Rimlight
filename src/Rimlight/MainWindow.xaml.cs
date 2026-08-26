@@ -428,8 +428,24 @@ public partial class MainWindow : Window
 
             panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v,
                 Loc.T("main.boost.note")));
-            panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v => _cfg.ShowStats = v,
-                Loc.T("main.stats.note")));
+            var diagHead = Text(Loc.T("main.diag.head"));
+            diagHead.FontWeight = FontWeights.Bold;
+            diagHead.Margin = new Thickness(0, 14, 0, 6);
+            panel.Children.Add(diagHead);
+
+            // detail follows the block it belongs to, the way "start minimised" follows
+            // the tray checkbox
+            CheckBox detailed = null!;
+            panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v =>
+            {
+                _cfg.ShowStats = v;
+                detailed.IsEnabled = v;
+                if (!v) detailed.IsChecked = false;
+            }, Loc.T("main.stats.note")));
+
+            panel.Children.Add(Check(Loc.T("main.stats.detailed"), _cfg.DetailedStats,
+                v => _cfg.DetailedStats = v, Loc.T("main.stats.detailed.note"), out detailed));
+            detailed.IsEnabled = _cfg.ShowStats;
 
             panel.Children.Add(Check(Loc.T("main.log"), _cfg.WriteLog, v =>
             {
@@ -1061,9 +1077,21 @@ public partial class MainWindow : Window
         _statLabels[2].Text = Loc.T("stats.capture") + ":";
         _statLabels[3].Text = Loc.T("stats.output") + ":";
         _statLabels[4].Text = Loc.T("stats.port") + ":";
-        _statLabels[5].Text = Loc.T("stats.latency") + ":";
-        _statLabels[6].Text = Loc.T("stats.stages") + ":";
-        _statLabels[7].Text = Loc.T("stats.sources") + ":";
+        // everything past the port row is diagnostic. The rows are Auto height, so
+        // collapsing the text collapses the row with it.
+        var detail = _cfg.DetailedStats ? Visibility.Visible : Visibility.Collapsed;
+        for (int i = 5; i < _statLabels.Length; i++)
+        {
+            _statLabels[i].Visibility = detail;
+            _statValues[i].Visibility = detail;
+        }
+
+        if (_cfg.DetailedStats)
+        {
+            _statLabels[5].Text = Loc.T("stats.latency") + ":";
+            _statLabels[6].Text = Loc.T("stats.stages") + ":";
+            _statLabels[7].Text = Loc.T("stats.sources") + ":";
+        }
 
         _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
         _statValues[1].Text = activeNow;
@@ -1072,16 +1100,19 @@ public partial class MainWindow : Window
         _statValues[4].Text = $"{_engine.DeviceStatus}; {Loc.T("stats.reconnects")} {_engine.Reconnects}";
         // end to end: from the moment the compositor put the picture on screen to the
         // moment its colours went out of the port
-        _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
-                              $"; p99 {_engine.FrameAgeP99Ms:F1}" +
-                              $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
-                              $"; {Loc.T("stats.dropped")} {Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
-                              $", {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
-        _statValues[6].Text = $"{Loc.T("stats.stage.grab")} {_engine.StageGrabMs:F1}" +
-                              $"; {Loc.T("stats.stage.reduce")} {_engine.StageReduceMs:F1}" +
-                              $"; {Loc.T("stats.stage.relay")} {_engine.StageRelayMs:F1}" +
-                              $"; {Loc.T("stats.stage.out")} {_engine.StageOutMs:F1}";
-        _statValues[7].Text = capLine;
+        if (_cfg.DetailedStats)
+        {
+            _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
+                                  $"; p99 {_engine.FrameAgeP99Ms:F1}" +
+                                  $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
+                                  $"; {Loc.T("stats.dropped")} {Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
+                                  $", {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
+            _statValues[6].Text = $"{Loc.T("stats.stage.grab")} {_engine.StageGrabMs:F1}" +
+                                  $"; {Loc.T("stats.stage.reduce")} {_engine.StageReduceMs:F1}" +
+                                  $"; {Loc.T("stats.stage.relay")} {_engine.StageRelayMs:F1}" +
+                                  $"; {Loc.T("stats.stage.out")} {_engine.StageOutMs:F1}";
+            _statValues[7].Text = capLine;
+        }
 
         // the toggle applies live; the block only exists while the preview column does
         StatsCard.Visibility = _cfg.ShowStats ? Visibility.Visible : Visibility.Collapsed;
@@ -1258,6 +1289,17 @@ public partial class MainWindow : Window
             if (int.TryParse(box.Text, out int v) && v >= 0) { onChange(v); MarkDirty(); }
         };
         return Labeled(label, box, help);
+    }
+
+    /// <summary>
+    /// Same, handing back the box itself - for options that enable one another, where the
+    /// help text turns the return value into the row rather than the checkbox.
+    /// </summary>
+    UIElement Check(string label, bool value, Action<bool> onChange, string? help, out CheckBox box)
+    {
+        var element = Check(label, value, onChange, help);
+        box = element as CheckBox ?? (CheckBox)((StackPanel)element).Children[0];
+        return element;
     }
 
     UIElement Check(string label, bool value, Action<bool> onChange, string? help = null)

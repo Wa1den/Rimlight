@@ -235,6 +235,13 @@ public sealed class RimlightConfig
     /// <summary>The statistics block under the preview; only visible while the preview is.</summary>
     public bool ShowStats { get; set; }
 
+    /// <summary>
+    /// Adds the diagnostic rows - latency, its split by stage, the source breakdown - and
+    /// turns on the per-second line in the log. Off by default: it answers questions
+    /// nobody has until something is wrong, and the log line is a line a second.
+    /// </summary>
+    public bool DetailedStats { get; set; }
+
     public bool OffOnExit { get; set; } = true;
     public bool OffOnDisplayOff { get; set; } = true;
     public bool OffOnLock { get; set; } = true;

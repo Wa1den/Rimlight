@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.Threading;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -37,9 +39,40 @@ public sealed class GpuReducer : IDisposable
 
     readonly ID3D11Texture2D?[] _staging = new ID3D11Texture2D?[RingSize];
     readonly bool[] _pending = new bool[RingSize];
+    readonly FrameStamps[] _slotStamp = new FrameStamps[RingSize];
     int _writeIdx;
 
+    /// <summary>
+    /// Whether the last read returned the frame just handed in, or an older ring slot.
+    ///
+    /// The difference matters to the caller, not just to statistics: an older slot is a
+    /// frame stale by definition, and its replacement is already on the card. Publishing
+    /// it is not free - downstream it costs a second pass through the whole output path
+    /// for a picture that is about to be superseded.
+    /// </summary>
+    public bool LastReadFresh { get; private set; }
+
+    /// <summary>
+    /// True while a reduction the GPU has not finished with is still sitting in the ring.
+    ///
+    /// Worth knowing to the caller. When the card is busy the wait above gives up and the
+    /// frame is left in flight - and nothing looks at it again until the next frame
+    /// arrives, which on a 60 fps game is 16 ms later for a result that was ready in
+    /// three. That gap is the whole difference between the latency measured on video and
+    /// the latency measured in a game.
+    /// </summary>
+    public bool HasPending
+    {
+        get
+        {
+            for (int i = 0; i < RingSize; i++)
+                if (_pending[i]) return true;
+            return false;
+        }
+    }
+
     int _width, _height, _targetMip, _smallW, _smallH;
+    bool _loggedSource;
 
     byte _lastR, _lastG, _lastB;
     bool _lastBlack;
@@ -56,6 +89,13 @@ public sealed class GpuReducer : IDisposable
 
     /// <summary>Last reduced image, BGRA. Valid until the next Reduce on this instance.</summary>
     public byte[] LastImage { get; private set; } = Array.Empty<byte>();
+
+    /// <summary>
+    /// Where the picture in <see cref="LastImage"/> has been. Carried per ring slot,
+    /// because the slot read back is usually not the one just queued - stamping at
+    /// readback would hide exactly the delay worth measuring.
+    /// </summary>
+    public FrameStamps LastImageStamps { get; private set; }
     public int ImageWidth { get; private set; }
     public int ImageHeight { get; private set; }
     public int ImageStride { get; private set; }
@@ -75,11 +115,23 @@ public sealed class GpuReducer : IDisposable
         _width = width;
         _height = height;
 
+        // Only the levels actually read back. MipLevels = 0 asks for the whole chain down
+        // to 1x1, and every level of it is a separate pass with a fixed price: for a
+        // 3440-wide frame that is twelve passes where five are wanted, and the seven extra
+        // move almost no pixels while still costing their turn on the card.
+        int lastMip = 0;
+        while ((width >> lastMip) > _targetMaxWidth && (width >> lastMip) > 1) lastMip++;
+
+        // the snapshot reads a 256-wide level, which must exist even when the reduction
+        // itself wants something coarser
+        int snapNeeded = 0;
+        while ((width >> snapNeeded) > 256 && (width >> snapNeeded) > 1) snapNeeded++;
+
         _mipTex = _device.CreateTexture2D(new Texture2DDescription
         {
             Width = (uint)width,
             Height = (uint)height,
-            MipLevels = 0,          // 0 asks D3D for the full chain
+            MipLevels = (uint)(Math.Max(lastMip, snapNeeded) + 1),
             ArraySize = 1,
             Format = Format.B8G8R8A8_UNorm,
             SampleDescription = new SampleDescription(1, 0),
@@ -116,6 +168,7 @@ public sealed class GpuReducer : IDisposable
         {
             _staging[i] = _device.CreateTexture2D(stagingDesc);
             _pending[i] = false;
+            _slotStamp[i] = default;
         }
         _writeIdx = 0;
         _hasResult = false;
@@ -131,69 +184,121 @@ public sealed class GpuReducer : IDisposable
             Height = (uint)_snapH
         });
 
-        ProbeLog.Log("gpu", $"редьюсер {width}x{height} -> mip {_targetMip} = {_smallW}x{_smallH}, кольцо {RingSize}");
+        ProbeLog.Log("gpu", $"редьюсер {width}x{height} -> mip {_targetMip} = {_smallW}x{_smallH}, " +
+                            $"уровней {levels}, кольцо {RingSize}");
     }
 
     /// <summary>
     /// Returns valid=false while the ring is still warming up, so the first frames are
     /// not miscounted as black - black frames are the signal this probe exists to catch.
     /// </summary>
-    public unsafe (byte r, byte g, byte b, bool isBlack, bool valid) Reduce(ID3D11Texture2D frame)
+    /// <param name="present">When this frame was put on screen, on the Stopwatch clock.</param>
+    /// <param name="acquire">When capture got hold of it. Both travel with the ring slot,
+    /// so the consumer can tell not only how old the picture is but where it aged.</param>
+    public (byte r, byte g, byte b, bool isBlack, bool valid) Reduce(ID3D11Texture2D frame,
+                                                                    long present = 0, long acquire = 0)
     {
         var fd = frame.Description;
+
+        // Logged once because it decides whether the full-frame copy below is avoidable:
+        // the frame can be sampled straight from a shader only if capture handed it over
+        // with ShaderResource on it, and every source is free not to.
+        if (!_loggedSource)
+        {
+            _loggedSource = true;
+            ProbeLog.Log("gpu", $"кадр от захвата: {fd.Width}x{fd.Height} {fd.Format} " +
+                                $"bind={fd.BindFlags} usage={fd.Usage} misc={fd.MiscFlags}");
+        }
+
         Ensure((int)fd.Width, (int)fd.Height);
 
         // queue this frame's downscale into the next ring slot
         _context.CopySubresourceRegion(_mipTex!, 0, 0, 0, 0, frame, 0);
         _context.GenerateMips(_srv!);
         _context.CopySubresourceRegion(_staging[_writeIdx]!, 0, 0, 0, 0, _mipTex!, (uint)_targetMip);
+
+        // Hand the work to the card now instead of letting it sit in the command buffer.
+        // The immediate context batches until something forces a submit, so without this
+        // the GPU had not even started when the readback was first tried - which is why
+        // the wait below never once succeeded in a whole session of measurements, idle
+        // desktop included. A non-blocking Map does not flush; only this does.
+        _context.Flush();
+
         _pending[_writeIdx] = true;
+        _slotStamp[_writeIdx] = present != 0
+            ? new FrameStamps(present, acquire != 0 ? acquire : present, 0)
+            : FrameStamps.Now();
         _writeIdx = (_writeIdx + 1) % RingSize;
 
         // Walk newest-first and take the first slot the GPU has already finished with.
         // MapFlags.DoNotWait turns "not ready" into a failed Result instead of a stall.
+        //
+        // The slot just queued is never among them in practice. A short spin waiting for
+        // it used to live here, on the theory that an idle card would finish in time;
+        // measurement said otherwise - not one hit in a session, desktop included, because
+        // the round trip is about four milliseconds however quiet the card is. The caller
+        // polls the ring anyway, so the spin bought nothing and cost a core.
         for (int k = RingSize - 1; k >= 0; k--)
-        {
-            int idx = (_writeIdx + k) % RingSize;
-            if (!_pending[idx]) continue;
-
-            var hr = _context.Map(_staging[idx]!, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.DoNotWait,
-                                  out MappedSubresource map);
-            if (hr.Failure) continue;   // DXGI_ERROR_WAS_STILL_DRAWING
-
-            try
+            if (TryReadSlot(k, out var result))
             {
-                var span = new ReadOnlySpan<byte>((void*)map.DataPointer, (int)map.RowPitch * _smallH);
-                if (LastImage.Length != span.Length) LastImage = new byte[span.Length];
-                span.CopyTo(LastImage);
-                ImageWidth = _smallW; ImageHeight = _smallH; ImageStride = (int)map.RowPitch;
-
-                var result = ColorMath.AverageBgra(span, _smallW, _smallH, (int)map.RowPitch);
-
-                // FNV-1a over the reduced image; a few KB, so the cost is irrelevant
-                ulong h = 14695981039346656037UL;
-                for (int i = 0; i < span.Length; i++)
-                {
-                    h ^= span[i];
-                    h *= 1099511628211UL;
-                }
-                LastHash = h;
-
-                _lastR = result.r; _lastG = result.g; _lastB = result.b; _lastBlack = result.isBlack;
-                _hasResult = true;
+                LastReadFresh = k == RingSize - 1;
                 return (result.r, result.g, result.b, result.isBlack, true);
             }
-            finally
-            {
-                _context.Unmap(_staging[idx]!, 0);
-                // this slot and everything older than it is now spent
-                for (int j = 0; j <= k; j++)
-                    _pending[(_writeIdx + j) % RingSize] = false;
-            }
-        }
+
+        LastReadFresh = false;
 
         Skipped++;
         return (_lastR, _lastG, _lastB, _lastBlack, _hasResult);
+    }
+
+    /// <summary>
+    /// Reads back ring slot <paramref name="k"/> counted from the oldest, where
+    /// RingSize - 1 is the one queued most recently. Fails without blocking when the GPU
+    /// has not finished with it.
+    /// </summary>
+    unsafe bool TryReadSlot(int k, out (byte r, byte g, byte b, bool isBlack) result)
+    {
+        result = default;
+
+        int idx = (_writeIdx + k) % RingSize;
+        if (_staging[idx] == null || !_pending[idx]) return false;
+
+        var hr = _context.Map(_staging[idx]!, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.DoNotWait,
+                              out MappedSubresource map);
+        if (hr.Failure) return false;   // DXGI_ERROR_WAS_STILL_DRAWING
+
+        try
+        {
+            var span = new ReadOnlySpan<byte>((void*)map.DataPointer, (int)map.RowPitch * _smallH);
+            if (LastImage.Length != span.Length) LastImage = new byte[span.Length];
+            span.CopyTo(LastImage);
+            ImageWidth = _smallW; ImageHeight = _smallH; ImageStride = (int)map.RowPitch;
+
+            // the readback is finished at this exact point, which is what Ready means
+            LastImageStamps = _slotStamp[idx] with { Ready = Stopwatch.GetTimestamp() };
+
+            result = ColorMath.AverageBgra(span, _smallW, _smallH, (int)map.RowPitch);
+
+            // FNV-1a over the reduced image; a few KB, so the cost is irrelevant
+            ulong h = 14695981039346656037UL;
+            for (int i = 0; i < span.Length; i++)
+            {
+                h ^= span[i];
+                h *= 1099511628211UL;
+            }
+            LastHash = h;
+
+            _lastR = result.r; _lastG = result.g; _lastB = result.b; _lastBlack = result.isBlack;
+            _hasResult = true;
+            return true;
+        }
+        finally
+        {
+            _context.Unmap(_staging[idx]!, 0);
+            // this slot and everything older than it is now spent
+            for (int j = 0; j <= k; j++)
+                _pending[(_writeIdx + j) % RingSize] = false;
+        }
     }
 
     /// <summary>
@@ -229,40 +334,19 @@ public sealed class GpuReducer : IDisposable
     /// would linger in the ring until something else happened to move. Callers drain here
     /// when capture reports no new frames.
     /// </summary>
-    public unsafe bool TryDrain(out byte r, out byte g, out byte b, out bool isBlack)
+    public bool TryDrain(out byte r, out byte g, out byte b, out bool isBlack)
     {
         r = _lastR; g = _lastG; b = _lastB; isBlack = _lastBlack;
         if (_staging[0] == null) return false;
 
         for (int k = RingSize - 1; k >= 0; k--)
         {
-            int idx = (_writeIdx + k) % RingSize;
-            if (!_pending[idx]) continue;
+            if (!TryReadSlot(k, out var result)) continue;
 
-            var hr = _context.Map(_staging[idx]!, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.DoNotWait,
-                                  out MappedSubresource map);
-            if (hr.Failure) continue;
+            LastReadFresh = true;
 
-            try
-            {
-                var span = new ReadOnlySpan<byte>((void*)map.DataPointer, (int)map.RowPitch * _smallH);
-                if (LastImage.Length != span.Length) LastImage = new byte[span.Length];
-                span.CopyTo(LastImage);
-                ImageWidth = _smallW; ImageHeight = _smallH; ImageStride = (int)map.RowPitch;
-
-                var result = ColorMath.AverageBgra(span, _smallW, _smallH, (int)map.RowPitch);
-                _lastR = result.r; _lastG = result.g; _lastB = result.b; _lastBlack = result.isBlack;
-                _hasResult = true;
-
-                r = result.r; g = result.g; b = result.b; isBlack = result.isBlack;
-                return true;
-            }
-            finally
-            {
-                _context.Unmap(_staging[idx]!, 0);
-                for (int j = 0; j <= k; j++)
-                    _pending[(_writeIdx + j) % RingSize] = false;
-            }
+            r = result.r; g = result.g; b = result.b; isBlack = result.isBlack;
+            return true;
         }
 
         return false;

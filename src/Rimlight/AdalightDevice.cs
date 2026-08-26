@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO.Ports;
 using System.Threading;
 using Rimlight.Capture;
@@ -43,6 +44,78 @@ public sealed class AdalightDevice : IDisposable
     public long FramesSent { get; private set; }
     public long FramesSkipped { get; private set; }
 
+    /// <summary>Frames thrown away because the previous one had not left the port yet.</summary>
+    public long FramesQueueFull { get; private set; }
+
+    /// <summary>
+    /// Frames thrown away for arriving sooner than the controller can take them.
+    ///
+    /// Counted apart from the queue: the two mean opposite things. A queue that will not
+    /// drain says the link is in trouble; frames arriving too soon says only that output
+    /// is being asked to run faster than the strip physically goes, which is a setting,
+    /// not a fault.
+    /// </summary>
+    public long FramesTooSoon { get; private set; }
+
+    /// <summary>
+    /// How many frames in a row may be dropped before one is forced through.
+    ///
+    /// Dropping is right when the port is momentarily behind, but if it is permanently
+    /// slower than we produce - the classic mismatched baud rate in the firmware - then
+    /// dropping everything would blank the strip after the firmware's 10 s timeout.
+    /// Letting one through periodically keeps it lit and the fault visible.
+    /// </summary>
+    const int MaxDropStreak = 3;
+
+    int _dropStreak;
+
+    /// <summary>
+    /// How long the last write to the port took.
+    ///
+    /// Not a formality: the write waits for the driver to take the frame, and at 1 Mbaud
+    /// 372 bytes are several milliseconds of wire time. That is a real part of the delay
+    /// and it is not ours to remove, so it is worth being able to see it apart from the
+    /// work that is.
+    /// </summary>
+    public double LastWriteMs { get; private set; }
+
+    /// <summary>
+    /// Shortest gap the controller can survive between frames, worked out from the baud
+    /// rate and the LED count in <see cref="Open"/>.
+    ///
+    /// The strip cannot absorb frames faster than it can read and show one, and sending
+    /// faster is not merely wasted: FastLED drives WS2812 with interrupts off, the AVR
+    /// receive buffer is 64 bytes, and a frame that arrives during those milliseconds
+    /// loses bytes and is thrown away whole when the firmware hunts for the next header.
+    /// Output is paced well below this, but it may hand over two frames close together
+    /// when one arrives just as a period ends - which is exactly the case to swallow.
+    /// </summary>
+    long _minGapTicks;
+
+    long _lastSendStamp;
+
+    /// <summary>
+    /// Shortest period the strip can actually be driven at, in ms. Output paces itself by
+    /// this rather than discovering it one refused frame at a time.
+    /// </summary>
+    public double MinFramePeriodMs => _minGapTicks * 1000.0 / Stopwatch.Frequency;
+
+    /// <summary>
+    /// How long until the controller can take another frame, in ms; zero when it is ready
+    /// now. Lets the caller wait out the remainder instead of having a frame refused -
+    /// with the idle ticks gone there is no next tick to carry a refused one, so it would
+    /// sit until the frame after that.
+    /// </summary>
+    public double ReadyInMs
+    {
+        get
+        {
+            if (!_everSent) return 0;
+            long left = _minGapTicks - (Stopwatch.GetTimestamp() - _lastSendStamp);
+            return left <= 0 ? 0 : left * 1000.0 / Stopwatch.Frequency;
+        }
+    }
+
     /// <param name="waitBootloader">
     /// Opening a closed port can pulse DTR and reboot the Nano, so a first connection waits
     /// it out. Reopening only because the LED count changed does not need that pause: the
@@ -58,6 +131,11 @@ public sealed class AdalightDevice : IDisposable
         _frame = new byte[6 + payload];
         _lastSent = new byte[payload];
         _everSent = false;
+
+        // 10 bits per byte on the wire, 30 us per WS2812 LED to latch
+        double wireMs = _frame.Length * 10.0 * 1000.0 / Math.Max(1, baud);
+        double showMs = ledCount * 0.030;
+        _minGapTicks = (long)((wireMs + showMs) * Stopwatch.Frequency / 1000.0);
 
         // header is constant for a given LED count, so build it once
         int n = ledCount - 1;
@@ -118,12 +196,17 @@ public sealed class AdalightDevice : IDisposable
     /// Skips identical frames - but the firmware blanks the strip after OFF_TIME (10 s)
     /// of silence, so a keepalive resend is required, not a nicety.
     /// </param>
-    public bool Send(byte[] rgb, bool onlyOnChange, int keepAliveMs)
+    /// <param name="force">
+    /// Ignores both pacing guards. Blacking out the strip happens once, on the way out,
+    /// and must not be the frame that gets dropped.
+    /// </param>
+    public bool Send(byte[] rgb, bool onlyOnChange, int keepAliveMs, bool force = false)
     {
         if (_port is not { IsOpen: true }) return false;
 
         int payload = _ledCount * 3;
         long now = Environment.TickCount64;
+        long nowStamp = Stopwatch.GetTimestamp();
 
         if (onlyOnChange && _everSent)
         {
@@ -139,6 +222,31 @@ public sealed class AdalightDevice : IDisposable
             }
         }
 
+        // Closer together than the controller's own cycle is worse than not sending at
+        // all - see _minGapTicks. TickCount64 would not do here: it moves in 15.6 ms steps.
+        if (!force && _everSent && nowStamp - _lastSendStamp < _minGapTicks)
+        {
+            FramesTooSoon++;
+            return true;
+        }
+
+        // Windows takes the write into the driver's queue and returns, so nothing here
+        // notices when the strip has fallen behind: the buffer holds about eleven frames,
+        // and every one of them sitting in it is latency the eye sees. If the previous
+        // frame has not left the port yet, drop this one - the next tick carries newer
+        // colours anyway, and stale colours are worth less than no colours.
+        try
+        {
+            if (!force && _everSent && _dropStreak < MaxDropStreak && _port.BytesToWrite >= _frame.Length)
+            {
+                _dropStreak++;
+                FramesQueueFull++;
+                return true;
+            }
+        }
+        catch { /* the port can disappear between the check and the write */ }
+        _dropStreak = 0;
+
         // the caller's buffer can briefly disagree with ours while the layout is being
         // edited; send what fits rather than throwing
         int copy = Math.Min(rgb.Length, payload);
@@ -147,7 +255,9 @@ public sealed class AdalightDevice : IDisposable
 
         try
         {
+            long writeStart = Stopwatch.GetTimestamp();
             _port.Write(_frame, 0, _frame.Length);
+            LastWriteMs = (Stopwatch.GetTimestamp() - writeStart) * 1000.0 / Stopwatch.Frequency;
         }
         catch (Exception ex)
         {
@@ -160,6 +270,7 @@ public sealed class AdalightDevice : IDisposable
 
         Buffer.BlockCopy(rgb, 0, _lastSent, 0, copy);
         _lastSendTicks = now;
+        _lastSendStamp = nowStamp;
         _everSent = true;
         FramesSent++;
         return true;
@@ -170,7 +281,7 @@ public sealed class AdalightDevice : IDisposable
     {
         if (_port is not { IsOpen: true }) return;
         var black = new byte[_ledCount * 3];
-        Send(black, onlyOnChange: false, keepAliveMs: 0);
+        Send(black, onlyOnChange: false, keepAliveMs: 0, force: true);
     }
 
     public bool TryReconnect(string portName, int baud, int ledCount)

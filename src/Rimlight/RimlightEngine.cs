@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using Rimlight.Capture;
 using Rimlight.Capture.Backends;
@@ -22,6 +23,16 @@ public sealed class RimlightEngine : IDisposable
     /// <summary>Per-zone sampling needs enough pixels that each zone covers several.</summary>
     const int ReduceWidth = 256;
 
+    /// <summary>
+    /// The capture throttle is set a little under the output period.
+    ///
+    /// Exactly one period looks right and is not: capture and output run on unrelated
+    /// clocks, so a frame arriving a hair early was thrown away and the picture waited a
+    /// whole extra period for the next one. The slack costs a few percent more reductions
+    /// and removes that beat.
+    /// </summary>
+    const double ReduceSlack = 0.8;
+
     readonly AdalightDevice _device = new();
     readonly ColorPipeline _pipeline = new();
     readonly FramePublisher _publisher = new();
@@ -32,6 +43,7 @@ public sealed class RimlightEngine : IDisposable
     volatile bool _running;
     volatile bool _paused;
     volatile bool _relayout;
+    volatile bool _restartCapture;
     string _pauseReason = "";
 
     RimlightConfig _cfg = new();
@@ -59,6 +71,49 @@ public sealed class RimlightEngine : IDisposable
     public long FramesSkipped => _device.FramesSkipped;
     public long Reconnects => _device.Reconnects;
     public bool IsPaused => _paused;
+
+    /// <summary>
+    /// How old the picture was when it reached the wire. Measured from the present time
+    /// the compositor reports, so it covers the whole path - capture, readback, relay,
+    /// pacing, colour - and is the number to watch when tuning any of them.
+    ///
+    /// Three figures because one will not do. The average says how it feels; the worst
+    /// over the last ten seconds catches the stalls the average hides; and p99 says
+    /// whether that worst is one frame in a thousand or one in twenty, which is the
+    /// difference between a curiosity and the thing to fix next.
+    ///
+    /// A worst-ever peak was tried here and thrown out: one hiccup at startup pinned it
+    /// for the rest of the session, after which it said nothing at all.
+    /// </summary>
+    public double FrameAgeMs { get; private set; }
+    public double FrameAgeMaxMs { get; private set; }
+    public double FrameAgeP99Ms { get; private set; }
+
+    /// <summary>
+    /// The same wait, split into the three places it can happen: from the picture being
+    /// presented to capture holding it, from there to the reduced pixels being back in
+    /// main memory, and from there to the wire. One total says how bad it is but never
+    /// where, and where is the only thing worth knowing when deciding what to change.
+    /// </summary>
+    public double StageGrabMs { get; private set; }
+    public double StageReduceMs { get; private set; }
+    public double StageRelayMs { get; private set; }
+    public double StageOutMs { get; private set; }
+
+    /// <summary>The part of the last stage that is pure wire time, for comparison.</summary>
+    public double StageWriteMs { get; private set; }
+
+    /// <summary>Seconds the rolling worst looks back over.</summary>
+    const int AgeWindowSeconds = 10;
+
+    /// <summary>Frames kept for the percentile - about eight seconds at 60 fps.</summary>
+    const int AgeSamples = 512;
+
+    /// <summary>Frames dropped because the serial port had not drained the previous one.</summary>
+    public long FramesQueueFull => _device.FramesQueueFull;
+
+    /// <summary>Frames dropped for arriving faster than the strip can be driven.</summary>
+    public long FramesTooSoon => _device.FramesTooSoon;
     public string PauseReason => _pauseReason;
     public LedZone[] Zones => _zones;
     public string PublisherStatus => _publisher.Status;
@@ -82,8 +137,14 @@ public sealed class RimlightEngine : IDisposable
     /// <summary>
     /// Swaps the capture method without touching the serial link, so switching does not
     /// cost a port reopen and its bootloader wait.
+    ///
+    /// Deferred to the output thread rather than done on the caller's: that thread now
+    /// waits on the backend's frame signal, and disposing the handle from under a waiter
+    /// is a crash, where a stale frame for one tick is nothing.
     /// </summary>
-    public void RestartCapture()
+    public void RestartCapture() => _restartCapture = true;
+
+    void ApplyCaptureRestart()
     {
         if (_monitor == null) return;
 
@@ -100,7 +161,7 @@ public sealed class RimlightEngine : IDisposable
 
         // no point reducing faster than the strip is driven; the surplus work would only
         // add to the GPU contention that starves the compositor in the first place
-        MinReduceIntervalMs = 1000.0 / Math.Clamp(cfg.MaxFps, 1, 240),
+        MinReduceIntervalMs = 1000.0 / Math.Clamp(cfg.MaxFps, 1, 240) * ReduceSlack,
         UseDda = cfg.CaptureMode is CaptureMode.Auto or CaptureMode.DdaOnly,
         UseWgc = cfg.CaptureMode is CaptureMode.Auto or CaptureMode.WgcOnly,
         UseGdi = cfg.CaptureMode is CaptureMode.Auto or CaptureMode.GdiOnly
@@ -169,6 +230,9 @@ public sealed class RimlightEngine : IDisposable
 
         _device.Open(cfg.PortName, cfg.BaudRate, _zones.Length);
 
+        _restartCapture = false;
+        FrameAgeMs = FrameAgeMaxMs = FrameAgeP99Ms = 0;
+        StageGrabMs = StageReduceMs = StageRelayMs = StageOutMs = StageWriteMs = 0;
         _running = true;
         _outputThread = new Thread(OutputLoop)
         {
@@ -192,6 +256,36 @@ public sealed class RimlightEngine : IDisposable
         var sw = Stopwatch.StartNew();
         var fpsWindow = Stopwatch.StartNew();
         int framesThisWindow = 0;
+        double ageSum = 0, ageMax = 0;
+        int ageCount = 0;
+
+        // one bucket per second; the worst shown is the worst still inside the window
+        var ageSeconds = new double[AgeWindowSeconds];
+        int ageSecond = 0;
+
+        // and every sample itself, for the percentile
+        var ageRing = new double[AgeSamples];
+        var ageSort = new double[AgeSamples];
+        int ageRingIdx = 0, ageRingCount = 0;
+
+        // Stamp of the newest picture folded into the output buffer, held until that
+        // buffer actually reaches the wire. Timing it where the frame was processed
+        // instead would have hidden the very delay a refused write causes.
+        FrameStamps pendingStamps = default;
+        double grabSum = 0, reduceSum = 0, relaySum = 0, outSum = 0, writeSum = 0;
+        long takenAt = 0;
+
+        // totals from the previous second, so the log can show what happened in this one
+        long lastCapFrames = 0, lastSkipped = 0;
+
+        // when capture last handed over a frame, to tell a still screen from a moving one
+        double lastFrameMs = 0;
+
+        // Rebuilt only when the capture object itself changes, which is why the swap was
+        // moved onto this thread - see RestartCapture.
+        HybridBackend? waitTarget = null;
+        WaitHandle[] waitSet = Array.Empty<WaitHandle>();
+
         double lastMs = 0;
         double lastCropMs = 0;
         long lastReconnectAttempt = 0;
@@ -199,12 +293,32 @@ public sealed class RimlightEngine : IDisposable
 
         while (_running)
         {
-            double periodMs = 1000.0 / Math.Clamp(_cfg.MaxFps, 1, 240);
+            // Never ask for a rate the strip cannot take. At 1 Mbaud a 122-LED frame is
+            // 3.7 ms on the wire and another 3.7 ms latching into the strip, so anything
+            // above about 135 fps is a request the port can only answer by refusing - and
+            // a refusal is worse than a slower cadence, because the colours then wait for
+            // a whole further period. The setting stays the ceiling; this is the floor.
+            double periodMs = Math.Max(1000.0 / Math.Clamp(_cfg.MaxFps, 1, 240),
+                                       _device.MinFramePeriodMs);
             double startMs = sw.Elapsed.TotalMilliseconds;
 
             // reducing faster than the strip is driven is wasted GPU work, so the capture
             // throttle tracks the cap live rather than only at startup
-            if (_capture != null) _capture.MinReduceIntervalMs = periodMs;
+            if (_capture != null) _capture.MinReduceIntervalMs = periodMs * ReduceSlack;
+
+            if (_restartCapture)
+            {
+                _restartCapture = false;
+                ApplyCaptureRestart();
+            }
+
+            if (!ReferenceEquals(waitTarget, _capture))
+            {
+                waitTarget = _capture;
+                waitSet = waitTarget != null && pacer.Handle != null
+                    ? new[] { pacer.Handle, waitTarget.FrameSignal }
+                    : Array.Empty<WaitHandle>();
+            }
 
             if (_relayout)
             {
@@ -232,10 +346,21 @@ public sealed class RimlightEngine : IDisposable
                 continue;
             }
 
+            // Consume the signal before reading the frame rather than after. The image is
+            // taken by polling, so a publish already picked up this way would otherwise
+            // leave the event set and wake the loop a second time for a frame it has
+            // seen - a pass that sends again too soon and is refused for it.
+            _capture?.FrameSignal.Reset();
+
             int w = 0, h = 0, stride = 0;
+            FrameStamps stamps = default;
             bool haveNewFrame = _capture != null &&
-                _capture.TryGetImage(ref _image, ref _imageVersion, out w, out h, out stride) &&
+                _capture.TryGetImage(ref _image, ref _imageVersion, out w, out h, out stride, out stamps) &&
                 w > 0 && h > 0;
+
+            // when this thread got its hands on the frame, splitting the way here from
+            // the way out - the two are worth telling apart, and one of them is not ours
+            if (haveNewFrame) takenAt = Stopwatch.GetTimestamp();
 
             if (haveNewFrame)
             {
@@ -274,11 +399,34 @@ public sealed class RimlightEngine : IDisposable
                 lock (_previewLock) Buffer.BlockCopy(_output, 0, _preview, 0, _output.Length);
             }
 
-            // Send on every tick, not only when capture had something new. A still screen
-            // produces no frames at all, and the firmware blanks the strip after 10 s of
-            // silence - so the colours have to keep going out regardless. Send() itself
-            // skips identical frames and honours the keepalive interval.
-            if (_output.Length > 0 && !_device.Send(_output, _cfg.SendOnlyOnChange, _cfg.KeepAliveMs))
+            // A still screen produces no frames at all, the smoothing still has to
+            // advance on the clock, and the firmware blanks the strip after 10 s of
+            // silence - so with nothing arriving the colours go out on every tick.
+            //
+            // While capture is delivering they do not. Those ticks have nothing to add:
+            // the smoothing they advance is carried by the next frame anyway, and the
+            // send takes the controller's slot from the frame about to arrive, which is
+            // then refused for coming too soon and waits out a whole further period.
+            // Output at 60 and capture at 55 are close enough that this happened on
+            // nearly every frame - two cadences beating against each other, and the
+            // dropped counter was the sound of it.
+            if (haveNewFrame) lastFrameMs = startMs;
+            bool flowing = lastFrameMs > 0 && startMs - lastFrameMs < periodMs * 2;
+
+            // A frame arriving inside the controller's cycle is worth waiting out. The
+            // remainder is a couple of milliseconds, and with the idle ticks suppressed
+            // there is no next tick to carry a refused frame - it would sit until the
+            // frame after it, which is the whole capture period away.
+            if (haveNewFrame)
+            {
+                double readyIn = _device.ReadyInMs;
+                if (readyIn > 0.2) pacer.Wait(readyIn);
+            }
+
+            long sentBefore = _device.FramesSent;
+
+            if (_output.Length > 0 && (haveNewFrame || !flowing) &&
+                !_device.Send(_output, _cfg.SendOnlyOnChange, _cfg.KeepAliveMs))
             {
                 // the port dropped; retry at a human pace rather than spinning
                 long now = Environment.TickCount64;
@@ -289,15 +437,143 @@ public sealed class RimlightEngine : IDisposable
                 }
             }
 
+            if (haveNewFrame && !stamps.IsEmpty) pendingStamps = stamps;
+
+            // Only frames that carried new pixels, and only once they are on the wire: a
+            // keepalive resend says nothing about how fast the picture gets through, and
+            // a frame the port refused has not got through at all yet.
+            if (!pendingStamps.IsEmpty && _device.FramesSent != sentBefore)
+            {
+                long sentAt = Stopwatch.GetTimestamp();
+                double perMs = 1000.0 / Stopwatch.Frequency;
+
+                grabSum += (pendingStamps.Acquire - pendingStamps.Present) * perMs;
+                reduceSum += (pendingStamps.Ready - pendingStamps.Acquire) * perMs;
+                relaySum += (takenAt - pendingStamps.Ready) * perMs;
+                outSum += (sentAt - takenAt) * perMs;
+                writeSum += _device.LastWriteMs;
+
+                double ageMs = (sentAt - pendingStamps.Present) * perMs;
+                pendingStamps = default;
+                ageSum += ageMs;
+                ageCount++;
+                if (ageMs > ageMax) ageMax = ageMs;
+
+                ageRing[ageRingIdx] = ageMs;
+                ageRingIdx = (ageRingIdx + 1) % AgeSamples;
+                if (ageRingCount < AgeSamples) ageRingCount++;
+            }
+
             if (fpsWindow.ElapsedMilliseconds >= 1000)
             {
                 OutputFps = framesThisWindow * 1000.0 / fpsWindow.ElapsedMilliseconds;
+                FrameAgeMs = ageCount > 0 ? ageSum / ageCount : 0;
+                StageGrabMs = ageCount > 0 ? grabSum / ageCount : 0;
+                StageReduceMs = ageCount > 0 ? reduceSum / ageCount : 0;
+                StageRelayMs = ageCount > 0 ? relaySum / ageCount : 0;
+                StageOutMs = ageCount > 0 ? outSum / ageCount : 0;
+                StageWriteMs = ageCount > 0 ? writeSum / ageCount : 0;
+                grabSum = reduceSum = relaySum = outSum = writeSum = 0;
+
+                LogTelemetry(ref lastCapFrames, ref lastSkipped);
+
+                ageSeconds[ageSecond] = ageMax;
+                ageSecond = (ageSecond + 1) % ageSeconds.Length;
+
+                double rolling = 0;
+                foreach (double v in ageSeconds)
+                    if (v > rolling) rolling = v;
+                FrameAgeMaxMs = rolling;
+
+                if (ageRingCount > 0)
+                {
+                    Array.Copy(ageRing, ageSort, ageRingCount);
+                    Array.Sort(ageSort, 0, ageRingCount);
+                    FrameAgeP99Ms = ageSort[Math.Min(ageRingCount - 1, (int)(ageRingCount * 0.99))];
+                }
+
                 framesThisWindow = 0;
+                ageSum = ageMax = 0;
+                ageCount = 0;
                 fpsWindow.Restart();
             }
 
             double restMs = periodMs - (sw.Elapsed.TotalMilliseconds - startMs);
-            if (restMs > 0.2) pacer.Wait(restMs);
+            if (restMs <= 0.2) continue;
+
+            // Sit out the rest of the period, but come back the moment capture publishes.
+            // The timeout argument of WaitAny cannot do this on its own: like Thread.Sleep
+            // it rounds up to the 15.6 ms system tick, which is the whole reason the pacer
+            // exists - so the pacer joins the wait as a handle of its own.
+            if (waitSet.Length == 2 && pacer.Arm(restMs)) WaitHandle.WaitAny(waitSet);
+            else pacer.Wait(restMs);
+        }
+    }
+
+    /// <summary>
+    /// One line a second with every number the latency work turns on, so a session can be
+    /// read off the file afterwards instead of off the panel by eye - which is no way to
+    /// catch something that happens once in a hundred frames.
+    ///
+    /// Rides on the existing log switch: it costs a line a second, and anyone who has
+    /// turned the log on is already looking into something.
+    /// </summary>
+    void LogTelemetry(ref long lastCapFrames, ref long lastSkipped)
+    {
+        if (!_cfg.WriteLog || !_cfg.DetailedStats) return;
+
+        var snap = _capture?.Metrics.Snapshot();
+        long capFrames = snap?.Frames ?? 0;
+        long skipped = snap?.Skipped ?? 0;
+
+        ProbeLog.Log("замер", string.Format(CultureInfo.InvariantCulture,
+            "задержка сред={0:F1} p99={1:F1} макс10с={2:F1} | " +
+            "этапы экран-захват={3:F1} свод={4:F1} реле={5:F1} отдача={6:F1} (из них запись={7:F1}) | " +
+            "кадров захвата={8} вывод={9:F1} fps | мимо={10} | " +
+            "отброшено очередь={11} темп={12} | источник={13} диодов={14} | окно={15}",
+            FrameAgeMs, FrameAgeP99Ms, FrameAgeMaxMs,
+            StageGrabMs, StageReduceMs, StageRelayMs, StageOutMs, StageWriteMs,
+            capFrames - lastCapFrames, OutputFps,
+            skipped - lastSkipped,
+            FramesQueueFull, FramesTooSoon,
+            _capture?.ActiveSource ?? "-", _zones.Length, ForegroundName()));
+
+        lastCapFrames = capFrames;
+        lastSkipped = skipped;
+    }
+
+    /// <summary>
+    /// What is in the foreground, for the log line above.
+    ///
+    /// Diagnostic only, and deliberately crude: reading a session of measurements back is
+    /// guesswork without knowing whether the game was even running at the time, and the
+    /// window title answers that at a glance. Process name alongside it, because a game
+    /// that renames its window mid-scene still keeps the same executable.
+    /// </summary>
+    static string ForegroundName()
+    {
+        try
+        {
+            IntPtr hwnd = Native.GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return "-";
+
+            string title = Native.GetWindowTitle(hwnd);
+            if (title.Length > 48) title = title[..48];
+
+            string exe = "?";
+            Native.GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid != 0)
+            {
+                using var proc = Process.GetProcessById((int)pid);
+                exe = proc.ProcessName;
+            }
+
+            return $"\"{title}\" [{exe}]";
+        }
+        catch
+        {
+            // the window can close between the two calls; a log line is not worth a throw
+            return "-";
         }
     }
 

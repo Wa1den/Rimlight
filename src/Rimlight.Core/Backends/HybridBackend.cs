@@ -51,7 +51,12 @@ public sealed class HybridBackend : CaptureBackendBase
     /// <summary>How long GDI is given to answer whether anything on screen is moving.</summary>
     const int ProbeMs = 700;
 
-    const int PollHz = 240;
+    /// <summary>
+    /// How often the ladder re-examines itself when no frames are arriving - which is
+    /// exactly the situation it exists for. Frames themselves no longer wait for this:
+    /// the loop wakes on the child's own signal.
+    /// </summary>
+    const int IdleTickMs = 4;
 
     enum Source { None, Dda, Wgc, Gdi }
 
@@ -125,7 +130,9 @@ public sealed class HybridBackend : CaptureBackendBase
         // with a single method enabled there is nothing to fall back to or from
         bool ladder = (UseDda ? 1 : 0) + (UseWgc ? 1 : 0) + (UseGdi ? 1 : 0) > 1;
 
-        double periodMs = 1000.0 / PollHz;
+        // Fixed for the life of the loop: a child that is stopped simply never signals,
+        // so there is nothing to rebuild when the ladder starts or stops one.
+        var childSignals = new[] { _dda.FrameSignal, _wgc.FrameSignal, _gdi.FrameSignal };
 
         try
         {
@@ -300,31 +307,43 @@ public sealed class HybridBackend : CaptureBackendBase
 
                 switch (_active)
                 {
-                    case Source.Dda when ddaNew:
-                        Relay(_dda, ref _relayDda);
-                        Metrics.NoteFrame(ds.R, ds.G, ds.B, false, ds.AcquireMs, ds.ReduceMs);
-                        Metrics.NoteStatus(BackendStatus.Ok, "DDA");
+                    // Relayed on the image itself, not on the frame counter. The child
+                    // publishes the picture and only then counts it, so a pass that read
+                    // the counter in between saw nothing to do and went back to sleep -
+                    // and the frame then waited out an idle tick, 15 ms of the system
+                    // timer, for work that was already sitting there ready.
+                    case Source.Dda:
+                        if (Relay(_dda, ref _relayDda))
+                        {
+                            Metrics.NoteFrame(ds.R, ds.G, ds.B, false, ds.AcquireMs, ds.ReduceMs);
+                            Metrics.NoteStatus(BackendStatus.Ok, "DDA");
+                        }
                         break;
 
-                    case Source.Wgc when wgcNew:
-                        Relay(_wgc, ref _relayWgc);
-                        Metrics.NoteFrame(ws.R, ws.G, ws.B, false, ws.AcquireMs, ws.ReduceMs);
-                        Metrics.NoteStatus(BackendStatus.Ok, "WGC");
+                    case Source.Wgc:
+                        if (Relay(_wgc, ref _relayWgc))
+                        {
+                            Metrics.NoteFrame(ws.R, ws.G, ws.B, false, ws.AcquireMs, ws.ReduceMs);
+                            Metrics.NoteStatus(BackendStatus.Ok, "WGC");
+                        }
                         break;
 
                     case Source.Gdi when _gdi.IsRunning:
-                        var gs = _gdi.Metrics.Snapshot();
-                        if (gs.Frames > 0 && gs.Frames != lastGdiFrames)
+                        if (Relay(_gdi, ref _relayGdi))
                         {
+                            var gs = _gdi.Metrics.Snapshot();
                             lastGdiFrames = gs.Frames;
-                            Relay(_gdi, ref _relayGdi);
                             Metrics.NoteFrame(gs.R, gs.G, gs.B, false, gs.AcquireMs, gs.ReduceMs);
                             Metrics.NoteStatus(BackendStatus.Ok, "GDI (запасной)");
                         }
                         break;
                 }
 
-                Thread.Sleep((int)Math.Max(1, periodMs));
+                // Wake on the frame itself rather than polling for it. Thread.Sleep(4)
+                // here really slept 15.6 ms - the system timer tick - so every frame spent
+                // an average of 8 ms merely waiting to be noticed. The timeout keeps the
+                // ladder ticking while nothing arrives, which is when it has work to do.
+                WaitHandle.WaitAny(childSignals, IdleTickMs);
             }
         }
         finally
@@ -336,11 +355,17 @@ public sealed class HybridBackend : CaptureBackendBase
         }
     }
 
-    /// <summary>Republishes the active child's frame as our own.</summary>
-    void Relay(CaptureBackendBase child, ref long version)
+    /// <summary>
+    /// Republishes the active child's frame as our own, keeping its timestamps. Returns
+    /// false when the child has nothing newer than what was relayed last time.
+    /// </summary>
+    bool Relay(CaptureBackendBase child, ref long version)
     {
-        if (child.TryGetImage(ref _relay, ref version, out int w, out int h, out int stride))
-            PublishImage(_relay, w, h, stride);
+        if (!child.TryGetImage(ref _relay, ref version, out int w, out int h, out int stride, out var stamps))
+            return false;
+
+        PublishImage(_relay, w, h, stride, stamps);
+        return true;
     }
 
     static string Describe(Source s) => s switch

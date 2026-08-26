@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "13";
+    const string Version = "20";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -257,6 +257,12 @@ public static class Loc
         ["about.repo"] = "Репозиторий проекта:",
         ["about.firmware"] = "Прошивка контроллера и исходная задумка:",
         ["main.stats"] = "Отображать статистику",
+        ["main.diag.head"] = "Статистика и лог",
+        ["main.stats.detailed"] = "Подробная статистика",
+        ["main.stats.detailed.note"] = "Данные о задержках с разделением по этапам. Пишутся и в лог, если он включён.",
+        ["main.diag.head"] = "Statistics and log",
+        ["main.stats.detailed"] = "Detailed statistics",
+        ["main.stats.detailed.note"] = "Latency figures broken down by stage. Written to the log too, when it is on.",
         ["main.stats.note"] = "Блок статистики под превью: метод захвата, частота кадров, состояние порта.",
         ["nav.preview"] = "Показывать превью",
         ["main.tray"] = "Сворачивать в трей",
@@ -358,6 +364,17 @@ public static class Loc
         ["stats.capture"] = "захват",
         ["stats.output"] = "вывод",
         ["stats.port"] = "порт",
+        ["stats.latency"] = "задержка",
+        ["stats.ms"] = "мс",
+        ["stats.worst"] = "худшая за 10 с",
+        ["stats.stages"] = "по этапам",
+        ["stats.stage.grab"] = "экран→захват",
+        ["stats.stage.reduce"] = "свод",
+        ["stats.stage.relay"] = "реле",
+        ["stats.stage.out"] = "провод",
+        ["stats.dropped"] = "отброшено:",
+        ["stats.drop.queue"] = "очередь",
+        ["stats.drop.rate"] = "темп",
         ["stats.sources"] = "источники",
         ["stats.sent"] = "отправлено",
         ["stats.skipped"] = "пропущено одинаковых",
@@ -506,6 +523,17 @@ public static class Loc
         ["stats.capture"] = "capture",
         ["stats.output"] = "output",
         ["stats.port"] = "port",
+        ["stats.latency"] = "latency",
+        ["stats.ms"] = "ms",
+        ["stats.worst"] = "worst in 10 s",
+        ["stats.stages"] = "stages",
+        ["stats.stage.grab"] = "screen→capture",
+        ["stats.stage.reduce"] = "reduce",
+        ["stats.stage.relay"] = "relay",
+        ["stats.stage.out"] = "wire",
+        ["stats.dropped"] = "dropped:",
+        ["stats.drop.queue"] = "queue",
+        ["stats.drop.rate"] = "rate",
         ["stats.sources"] = "sources",
         ["stats.sent"] = "sent",
         ["stats.skipped"] = "identical skipped",

@@ -24,6 +24,27 @@ public sealed class DdaBackend : CaptureBackendBase
 {
     public override string Name => "DDA";
 
+    /// <summary>
+    /// How long AcquireNextFrame is allowed to block.
+    ///
+    /// It used to be 100 ms, which is also how long a reduction could sit unread in the
+    /// ring after the last change: the drain only runs on the timeout branch, and on a
+    /// screen that moves once and then stops there is no next frame to push it out.
+    /// Waking eight times a second more often costs nothing and caps that at one tick.
+    /// </summary>
+    const int AcquireTimeoutMs = 8;
+
+    /// <summary>
+    /// How long to leave a reduction sitting in the ring before looking at it again.
+    ///
+    /// Paced here rather than through the timeout of AcquireNextFrame, which is a kernel
+    /// wait like any other: asking it for one millisecond is not a promise of one
+    /// millisecond, and the rounding it does is the very thing being chased out.
+    /// </summary>
+    const double DrainPollMs = 0.5;
+
+    readonly PrecisionTimer _pacer = new();
+
     IntPtr _originalDesk = IntPtr.Zero;
     IntPtr _currentDesk = IntPtr.Zero;
 
@@ -52,6 +73,12 @@ public sealed class DdaBackend : CaptureBackendBase
             if (_originalDesk != IntPtr.Zero) Native.SetThreadDesktop(_originalDesk);
             if (_currentDesk != IntPtr.Zero) { Native.CloseDesktop(_currentDesk); _currentDesk = IntPtr.Zero; }
         }
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _pacer.Dispose();
     }
 
     void Sleep(int ms)
@@ -159,8 +186,15 @@ public sealed class DdaBackend : CaptureBackendBase
                 var sw = new Stopwatch();
                 while (ShouldRun)
                 {
+                    // With a reduction still in flight, do not settle in to wait for the
+                    // next frame - the one already queued will be ready long before it.
+                    // Ask whether anything is there, and if not, come back in half a
+                    // millisecond to see whether the GPU has finished.
+                    bool draining = reducer.HasPending;
+
                     sw.Restart();
-                    var res = dup.AcquireNextFrame(100, out OutduplFrameInfo info, out IDXGIResource? resource);
+                    var res = dup.AcquireNextFrame(draining ? 0u : AcquireTimeoutMs,
+                                                   out OutduplFrameInfo info, out IDXGIResource? resource);
 
                     if (res.Code == ResultCode.WaitTimeout.Code)
                     {
@@ -168,9 +202,15 @@ public sealed class DdaBackend : CaptureBackendBase
                         // still be sitting in the ring unread
                         if (reducer.TryDrain(out byte dr, out byte dg, out byte db, out bool dblack))
                         {
-                            PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight, reducer.ImageStride);
+                            PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
+                                         reducer.ImageStride, reducer.LastImageStamps);
                             Metrics.NoteFrame(dr, dg, db, dblack, 0, 0);
                         }
+                        else if (draining) _pacer.Wait(DrainPollMs);
+
+                        // Only a real one counts. A poll we asked to return immediately is
+                        // not the screen going quiet, and counting it as one would paint
+                        // the whole status strip amber through every game.
                         else Metrics.NoteTimeout();
                         continue;
                     }
@@ -183,6 +223,7 @@ public sealed class DdaBackend : CaptureBackendBase
                     }
 
                     double acquireMs = sw.Elapsed.TotalMilliseconds;
+                    long acquiredAt = Stopwatch.GetTimestamp();
 
                     try
                     {
@@ -196,7 +237,7 @@ public sealed class DdaBackend : CaptureBackendBase
 
                         using var tex = resource!.QueryInterface<ID3D11Texture2D>();
                         sw.Restart();
-                        var (r, g, b, black, valid) = reducer.Reduce(tex);
+                        var (r, g, b, black, valid) = reducer.Reduce(tex, PresentStamp(info), acquiredAt);
                         double reduceMs = sw.Elapsed.TotalMilliseconds;
 
                         if (!valid) continue;   // ring still warming up
@@ -206,9 +247,17 @@ public sealed class DdaBackend : CaptureBackendBase
                             if (px != null) Snapshot.Save(Name, px, sw2, sh2, stride2);
                         }
 
-                        PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight, reducer.ImageStride);
-                        Metrics.NoteFrame(r, g, b, black, acquireMs, reduceMs);
+                        // The card was busy and this is an older slot - but the frame that
+                        // replaces it is already queued, and the poll above will have it
+                        // within a millisecond or two. Sending both means the output thread
+                        // wakes twice per frame and the port throws away the fresher of the
+                        // two for arriving too soon after the staler one.
                         Metrics.NoteSkipped(reducer.Skipped);
+                        if (!reducer.LastReadFresh) continue;
+
+                        PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
+                                     reducer.ImageStride, reducer.LastImageStamps);
+                        Metrics.NoteFrame(r, g, b, black, acquireMs, reduceMs);
                         if (black) ProbeLog.LogStatusChange(Name, BackendStatus.Black, "ЧЁРНЫЙ КАДР");
                         else ProbeLog.LogStatusChange(Name, BackendStatus.Ok, "OK");
                     }
@@ -224,6 +273,22 @@ public sealed class DdaBackend : CaptureBackendBase
                 dup?.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// When the frame was actually put on screen, on the Stopwatch clock.
+    ///
+    /// LastPresentTime is a QPC value, which is the clock Stopwatch reads - so this is a
+    /// true "picture appeared" mark rather than "we got round to it". Trusted only while
+    /// it reads as one: a value from another epoch would quietly turn the latency figure
+    /// into noise, and no measurement is better than a wrong one.
+    /// </summary>
+    static long PresentStamp(in OutduplFrameInfo info)
+    {
+        long now = Stopwatch.GetTimestamp();
+        long present = info.LastPresentTime;
+        long age = now - present;
+        return present > 0 && age >= 0 && age < Stopwatch.Frequency ? present : now;
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 
 namespace Rimlight.Capture.Backends;
@@ -66,24 +67,50 @@ public abstract class CaptureBackendBase : ICaptureBackend
     byte[] _image = Array.Empty<byte>();
     int _imgW, _imgH, _imgStride;
     long _imageVersion;
+    long _imageStamp;
 
-    protected void PublishImage(byte[] src, int width, int height, int stride)
+    /// <summary>
+    /// Raised on every published frame, so a consumer can wake on the frame itself instead
+    /// of polling. Polling was costing real latency: a consumer asking every few
+    /// milliseconds actually asks every 15.6 ms, because that is what Thread.Sleep and
+    /// wait timeouts round up to.
+    ///
+    /// Only a hint - the version check in <see cref="TryGetImage"/> stays authoritative,
+    /// so a missed or spurious signal costs at most one extra pass round the caller's loop.
+    /// </summary>
+    readonly AutoResetEvent _frameSignal = new(false);
+
+    public WaitHandle FrameSignal => _frameSignal;
+
+    /// <param name="stampQpc">
+    /// When the picture this frame carries was actually put on screen, on the Stopwatch
+    /// clock. Passed along rather than taken here so it survives the relay through the
+    /// hybrid: what matters is the age of the picture, not of the copy.
+    /// </param>
+    protected void PublishImage(byte[] src, int width, int height, int stride, long stampQpc = 0)
     {
         lock (_imageLock)
         {
             if (_image.Length != src.Length) _image = new byte[src.Length];
             Array.Copy(src, _image, src.Length);
             _imgW = width; _imgH = height; _imgStride = stride;
+            _imageStamp = stampQpc != 0 ? stampQpc : Stopwatch.GetTimestamp();
             _imageVersion++;
         }
+        _frameSignal.Set();
     }
 
     /// <summary>Copies the newest frame out if it is newer than <paramref name="version"/>.</summary>
-    public bool TryGetImage(ref byte[] dest, ref long version, out int width, out int height, out int stride)
+    public bool TryGetImage(ref byte[] dest, ref long version, out int width, out int height, out int stride) =>
+        TryGetImage(ref dest, ref version, out width, out height, out stride, out _);
+
+    /// <param name="stampQpc">When the picture was put on screen; 0 when unknown.</param>
+    public bool TryGetImage(ref byte[] dest, ref long version, out int width, out int height, out int stride,
+                            out long stampQpc)
     {
         lock (_imageLock)
         {
-            width = _imgW; height = _imgH; stride = _imgStride;
+            width = _imgW; height = _imgH; stride = _imgStride; stampQpc = _imageStamp;
             if (_imageVersion == version || _image.Length == 0) return false;
             if (dest.Length != _image.Length) dest = new byte[_image.Length];
             Array.Copy(_image, dest, _image.Length);
@@ -151,7 +178,8 @@ public abstract class CaptureBackendBase : ICaptureBackend
     public virtual string SummaryLine()
     {
         var s = Metrics.Snapshot();
-        return $"кадров={s.Frames} таймаутов={s.Timeouts} ошибок={s.Errors} чёрных={s.BlackFrames} тёмных={s.DarkSpikes} пропущено={s.Skipped} " +
+        return $"кадров={s.Frames} таймаутов={s.Timeouts} ошибок={s.Errors} чёрных={s.BlackFrames} тёмных={s.DarkSpikes} " +
+               $"пропущено={s.Skipped} свежих={s.Fresh} " +
                $"fps5s={s.FpsAvg5s:F1} p50={s.P50Ms:F1}мс p99={s.P99Ms:F1}мс " +
                $"получение={s.AcquireMs:F2}мс свод={s.ReduceMs:F2}мс";
     }
@@ -160,7 +188,11 @@ public abstract class CaptureBackendBase : ICaptureBackend
 
     protected abstract void RunLoop();
 
-    public virtual void Dispose() => Stop();
+    public virtual void Dispose()
+    {
+        Stop();
+        _frameSignal.Dispose();
+    }
 }
 
 /// <summary>Averages a BGRA buffer and reports whether the frame is entirely black.</summary>

@@ -23,6 +23,7 @@ public struct BackendSnapshot
     public double AcquireMs, ReduceMs;
     public long Frames, Timeouts, Errors, BlackFrames;
     public long Skipped;
+    public long Fresh;
     public long DarkSpikes;
 }
 
@@ -59,7 +60,7 @@ public sealed class BackendMetrics
     string _statusText = "остановлен";
     byte _r, _g, _b;
     double _acquireMs, _reduceMs;
-    long _frames, _timeouts, _errors, _blackFrames, _skipped, _darkSpikes;
+    long _frames, _timeouts, _errors, _blackFrames, _skipped, _fresh, _darkSpikes;
     double _lumaEma;
     long _lastFrameTicks;
 
@@ -95,7 +96,7 @@ public sealed class BackendMetrics
             _intervalIdx = _intervalCount = 0;
             Array.Clear(_rate);
             _rateIdx = 0;
-            _frames = _timeouts = _errors = _blackFrames = _skipped = _darkSpikes = 0;
+            _frames = _timeouts = _errors = _blackFrames = _skipped = _fresh = _darkSpikes = 0;
             _lumaEma = 0;
             _acquireMs = _reduceMs = 0;
             _lastFrameTicks = 0;
@@ -155,6 +156,15 @@ public sealed class BackendMetrics
     public void NoteSkipped(long total)
     {
         lock (_lock) { _skipped = total; }
+    }
+
+    /// <summary>
+    /// Total frames read back as themselves rather than as the previous one. Against
+    /// Frames this says whether the short wait for the fresh ring slot is paying off.
+    /// </summary>
+    public void NoteFresh(long total)
+    {
+        lock (_lock) { _fresh = total; }
     }
 
     public void NoteTimeout()
@@ -251,6 +261,7 @@ public sealed class BackendMetrics
                 Errors = _errors,
                 BlackFrames = _blackFrames,
                 Skipped = _skipped,
+                Fresh = _fresh,
                 DarkSpikes = _darkSpikes
             };
         }

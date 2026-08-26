@@ -1,9 +1,9 @@
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Microsoft.Win32.SafeHandles;
 
-namespace Rimlight;
+namespace Rimlight.Capture;
 
 /// <summary>
 /// Sub-millisecond pacing.
@@ -13,6 +13,10 @@ namespace Rimlight;
 /// 32 fps no matter how fast capture runs. A high-resolution waitable timer gets the real
 /// interval without raising the timer resolution process-wide, which would cost battery
 /// and affect every other program.
+///
+/// The same rounding applies to a wait with a timeout, which is why <see cref="Handle"/>
+/// exists: pacing that also has to wake early on an event cannot use the timeout argument
+/// of WaitAny and must put this timer into the handle array instead.
 /// </summary>
 public sealed class PrecisionTimer : IDisposable
 {
@@ -34,6 +38,12 @@ public sealed class PrecisionTimer : IDisposable
 
     IntPtr _handle;
 
+    /// <summary>
+    /// The timer as a WaitHandle, for callers that wait on it together with other objects.
+    /// Null where no high-resolution timer could be created.
+    /// </summary>
+    public WaitHandle? Handle { get; }
+
     public PrecisionTimer()
     {
         _handle = CreateWaitableTimerExW(IntPtr.Zero, null,
@@ -41,7 +51,27 @@ public sealed class PrecisionTimer : IDisposable
 
         // pre-1803 Windows has no high-resolution timers; fall back to Sleep
         if (_handle == IntPtr.Zero)
-            Capture.ProbeLog.Log("таймер", "высокоточный таймер недоступен, пейсинг через Sleep");
+        {
+            ProbeLog.Log("таймер", "высокоточный таймер недоступен, пейсинг через Sleep");
+            return;
+        }
+
+        // ownsHandle: false - CloseHandle below is ours, and doing it twice would throw
+        Handle = new ManualResetEvent(false) { SafeWaitHandle = new SafeWaitHandle(_handle, false) };
+    }
+
+    /// <summary>
+    /// Starts the countdown without waiting for it. Pair with <see cref="Handle"/> in a
+    /// WaitAny; returns false where the timer is unavailable and the caller must fall back.
+    /// </summary>
+    public bool Arm(double milliseconds)
+    {
+        if (_handle == IntPtr.Zero) return false;
+
+        // negative due time is relative, in 100 ns units
+        long due = -(long)(milliseconds * 10_000.0);
+        if (due >= 0) due = -1;
+        return SetWaitableTimer(_handle, ref due, 0, IntPtr.Zero, IntPtr.Zero, false);
     }
 
     public void Wait(double milliseconds)
@@ -54,11 +84,7 @@ public sealed class PrecisionTimer : IDisposable
             return;
         }
 
-        // negative due time is relative, in 100 ns units
-        long due = -(long)(milliseconds * 10_000.0);
-        if (due == 0) return;
-
-        if (SetWaitableTimer(_handle, ref due, 0, IntPtr.Zero, IntPtr.Zero, false))
+        if (Arm(milliseconds))
             WaitForSingleObject(_handle, (uint)Math.Max(1, milliseconds * 2));
         else
             Thread.Sleep((int)Math.Max(1, milliseconds));
@@ -66,6 +92,7 @@ public sealed class PrecisionTimer : IDisposable
 
     public void Dispose()
     {
+        Handle?.Dispose();
         if (_handle != IntPtr.Zero)
         {
             CloseHandle(_handle);

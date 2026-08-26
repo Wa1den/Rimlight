@@ -190,12 +190,16 @@ public sealed class WgcBackend : CaptureBackendBase
                     Interlocked.Exchange(ref _lastFrameTicks, DateTime.UtcNow.Ticks);
                     if (!ReduceDue()) return;   // faster than the strip needs
 
+                    // WGC hands out no present time, so the frame is dated from here - the
+                    // callback runs on arrival, which is as close to it as this path gets
+                    long stamp = Stopwatch.GetTimestamp();
+
                     sw.Restart();
                     using var tex = GetTexture(frame.Surface);
                     double acquireMs = sw.Elapsed.TotalMilliseconds;
 
                     sw.Restart();
-                    var (r, g, b, black, valid) = reducer.Reduce(tex);
+                    var (r, g, b, black, valid) = reducer.Reduce(tex, stamp);
                     double reduceMs = sw.Elapsed.TotalMilliseconds;
 
                     Interlocked.Exchange(ref _lastFrameTicks, DateTime.UtcNow.Ticks);
@@ -207,9 +211,11 @@ public sealed class WgcBackend : CaptureBackendBase
                         if (px != null) Snapshot.Save(Name, px, sw2, sh2, stride2);
                     }
 
-                    PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight, reducer.ImageStride);
+                    PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
+                                 reducer.ImageStride, reducer.LastImageStamp);
                     Metrics.NoteFrame(r, g, b, black, acquireMs, reduceMs);
                     Metrics.NoteSkipped(reducer.Skipped);
+                    Metrics.NoteFresh(reducer.FreshHits);
                     if (black) ProbeLog.LogStatusChange(Name, BackendStatus.Black, "ЧЁРНЫЙ КАДР");
                     else ProbeLog.LogStatusChange(Name, BackendStatus.Ok, "OK");
                 }
@@ -236,7 +242,8 @@ public sealed class WgcBackend : CaptureBackendBase
                 {
                     if (reducer.TryDrain(out byte dr, out byte dg, out byte db, out bool dblack))
                     {
-                        PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight, reducer.ImageStride);
+                        PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
+                                     reducer.ImageStride, reducer.LastImageStamp);
                         Metrics.NoteFrame(dr, dg, db, dblack, 0, 0);
                         Interlocked.Exchange(ref _lastFrameTicks, DateTime.UtcNow.Ticks);
                         continue;

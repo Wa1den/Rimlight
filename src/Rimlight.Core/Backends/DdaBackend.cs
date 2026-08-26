@@ -24,6 +24,16 @@ public sealed class DdaBackend : CaptureBackendBase
 {
     public override string Name => "DDA";
 
+    /// <summary>
+    /// How long AcquireNextFrame is allowed to block.
+    ///
+    /// It used to be 100 ms, which is also how long a reduction could sit unread in the
+    /// ring after the last change: the drain only runs on the timeout branch, and on a
+    /// screen that moves once and then stops there is no next frame to push it out.
+    /// Waking eight times a second more often costs nothing and caps that at one tick.
+    /// </summary>
+    const int AcquireTimeoutMs = 8;
+
     IntPtr _originalDesk = IntPtr.Zero;
     IntPtr _currentDesk = IntPtr.Zero;
 
@@ -160,7 +170,7 @@ public sealed class DdaBackend : CaptureBackendBase
                 while (ShouldRun)
                 {
                     sw.Restart();
-                    var res = dup.AcquireNextFrame(100, out OutduplFrameInfo info, out IDXGIResource? resource);
+                    var res = dup.AcquireNextFrame(AcquireTimeoutMs, out OutduplFrameInfo info, out IDXGIResource? resource);
 
                     if (res.Code == ResultCode.WaitTimeout.Code)
                     {
@@ -168,7 +178,8 @@ public sealed class DdaBackend : CaptureBackendBase
                         // still be sitting in the ring unread
                         if (reducer.TryDrain(out byte dr, out byte dg, out byte db, out bool dblack))
                         {
-                            PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight, reducer.ImageStride);
+                            PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
+                                         reducer.ImageStride, reducer.LastImageStamp);
                             Metrics.NoteFrame(dr, dg, db, dblack, 0, 0);
                         }
                         else Metrics.NoteTimeout();
@@ -196,7 +207,7 @@ public sealed class DdaBackend : CaptureBackendBase
 
                         using var tex = resource!.QueryInterface<ID3D11Texture2D>();
                         sw.Restart();
-                        var (r, g, b, black, valid) = reducer.Reduce(tex);
+                        var (r, g, b, black, valid) = reducer.Reduce(tex, PresentStamp(info));
                         double reduceMs = sw.Elapsed.TotalMilliseconds;
 
                         if (!valid) continue;   // ring still warming up
@@ -206,9 +217,11 @@ public sealed class DdaBackend : CaptureBackendBase
                             if (px != null) Snapshot.Save(Name, px, sw2, sh2, stride2);
                         }
 
-                        PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight, reducer.ImageStride);
+                        PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
+                                     reducer.ImageStride, reducer.LastImageStamp);
                         Metrics.NoteFrame(r, g, b, black, acquireMs, reduceMs);
                         Metrics.NoteSkipped(reducer.Skipped);
+                        Metrics.NoteFresh(reducer.FreshHits);
                         if (black) ProbeLog.LogStatusChange(Name, BackendStatus.Black, "ЧЁРНЫЙ КАДР");
                         else ProbeLog.LogStatusChange(Name, BackendStatus.Ok, "OK");
                     }
@@ -224,6 +237,22 @@ public sealed class DdaBackend : CaptureBackendBase
                 dup?.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// When the frame was actually put on screen, on the Stopwatch clock.
+    ///
+    /// LastPresentTime is a QPC value, which is the clock Stopwatch reads - so this is a
+    /// true "picture appeared" mark rather than "we got round to it". Trusted only while
+    /// it reads as one: a value from another epoch would quietly turn the latency figure
+    /// into noise, and no measurement is better than a wrong one.
+    /// </summary>
+    static long PresentStamp(in OutduplFrameInfo info)
+    {
+        long now = Stopwatch.GetTimestamp();
+        long present = info.LastPresentTime;
+        long age = now - present;
+        return present > 0 && age >= 0 && age < Stopwatch.Frequency ? present : now;
     }
 
     /// <summary>

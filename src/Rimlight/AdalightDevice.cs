@@ -43,6 +43,21 @@ public sealed class AdalightDevice : IDisposable
     public long FramesSent { get; private set; }
     public long FramesSkipped { get; private set; }
 
+    /// <summary>Frames thrown away because the previous one had not left the port yet.</summary>
+    public long FramesDropped { get; private set; }
+
+    /// <summary>
+    /// How many frames in a row may be dropped before one is forced through.
+    ///
+    /// Dropping is right when the port is momentarily behind, but if it is permanently
+    /// slower than we produce - the classic mismatched baud rate in the firmware - then
+    /// dropping everything would blank the strip after the firmware's 10 s timeout.
+    /// Letting one through periodically keeps it lit and the fault visible.
+    /// </summary>
+    const int MaxDropStreak = 3;
+
+    int _dropStreak;
+
     /// <param name="waitBootloader">
     /// Opening a closed port can pulse DTR and reboot the Nano, so a first connection waits
     /// it out. Reopening only because the LED count changed does not need that pause: the
@@ -138,6 +153,23 @@ public sealed class AdalightDevice : IDisposable
                 return true;
             }
         }
+
+        // Windows takes the write into the driver's queue and returns, so nothing here
+        // notices when the strip has fallen behind: the buffer holds about eleven frames,
+        // and every one of them sitting in it is latency the eye sees. If the previous
+        // frame has not left the port yet, drop this one - the next tick carries newer
+        // colours anyway, and stale colours are worth less than no colours.
+        try
+        {
+            if (_everSent && _dropStreak < MaxDropStreak && _port.BytesToWrite >= _frame.Length)
+            {
+                _dropStreak++;
+                FramesDropped++;
+                return true;
+            }
+        }
+        catch { /* the port can disappear between the check and the write */ }
+        _dropStreak = 0;
 
         // the caller's buffer can briefly disagree with ours while the layout is being
         // edited; send what fits rather than throwing

@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "13";
+    const string Version = "14";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -358,6 +358,10 @@ public static class Loc
         ["stats.capture"] = "захват",
         ["stats.output"] = "вывод",
         ["stats.port"] = "порт",
+        ["stats.latency"] = "задержка",
+        ["stats.ms"] = "мс",
+        ["stats.worst"] = "худшая",
+        ["stats.dropped"] = "отброшено",
         ["stats.sources"] = "источники",
         ["stats.sent"] = "отправлено",
         ["stats.skipped"] = "пропущено одинаковых",
@@ -506,6 +510,10 @@ public static class Loc
         ["stats.capture"] = "capture",
         ["stats.output"] = "output",
         ["stats.port"] = "port",
+        ["stats.latency"] = "latency",
+        ["stats.ms"] = "ms",
+        ["stats.worst"] = "worst",
+        ["stats.dropped"] = "dropped",
         ["stats.sources"] = "sources",
         ["stats.sent"] = "sent",
         ["stats.skipped"] = "identical skipped",

@@ -29,8 +29,8 @@ public partial class MainWindow : Window
 
     readonly List<UIElement> _pages = new();
 
-    readonly TextBlock[] _statLabels = new TextBlock[6];
-    readonly TextBlock[] _statValues = new TextBlock[6];
+    readonly TextBlock[] _statLabels = new TextBlock[7];
+    readonly TextBlock[] _statValues = new TextBlock[7];
 
     /// <summary>Window width to come back to when the preview is switched on again.</summary>
     double _wideWidth;
@@ -1061,14 +1061,20 @@ public partial class MainWindow : Window
         _statLabels[2].Text = Loc.T("stats.capture") + ":";
         _statLabels[3].Text = Loc.T("stats.output") + ":";
         _statLabels[4].Text = Loc.T("stats.port") + ":";
-        _statLabels[5].Text = Loc.T("stats.sources") + ":";
+        _statLabels[5].Text = Loc.T("stats.latency") + ":";
+        _statLabels[6].Text = Loc.T("stats.sources") + ":";
 
         _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
         _statValues[1].Text = activeNow;
         _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1} fps; p50 {(snap?.P50Ms ?? 0):F1} ms; p99 {(snap?.P99Ms ?? 0):F1} ms";
         _statValues[3].Text = $"{_engine.OutputFps:F1} fps; {Loc.T("stats.sent")} {_engine.FramesSent}; {Loc.T("stats.skipped")} {_engine.FramesSkipped}";
         _statValues[4].Text = $"{_engine.DeviceStatus}; {Loc.T("stats.reconnects")} {_engine.Reconnects}";
-        _statValues[5].Text = capLine;
+        // end to end: from the moment the compositor put the picture on screen to the
+        // moment its colours went out of the port
+        _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
+                              $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
+                              $"; {Loc.T("stats.dropped")} {_engine.FramesDropped}";
+        _statValues[6].Text = capLine;
 
         // the toggle applies live; the block only exists while the preview column does
         StatsCard.Visibility = _cfg.ShowStats ? Visibility.Visible : Visibility.Collapsed;

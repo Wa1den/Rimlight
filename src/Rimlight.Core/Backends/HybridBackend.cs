@@ -51,7 +51,12 @@ public sealed class HybridBackend : CaptureBackendBase
     /// <summary>How long GDI is given to answer whether anything on screen is moving.</summary>
     const int ProbeMs = 700;
 
-    const int PollHz = 240;
+    /// <summary>
+    /// How often the ladder re-examines itself when no frames are arriving - which is
+    /// exactly the situation it exists for. Frames themselves no longer wait for this:
+    /// the loop wakes on the child's own signal.
+    /// </summary>
+    const int IdleTickMs = 4;
 
     enum Source { None, Dda, Wgc, Gdi }
 
@@ -125,7 +130,9 @@ public sealed class HybridBackend : CaptureBackendBase
         // with a single method enabled there is nothing to fall back to or from
         bool ladder = (UseDda ? 1 : 0) + (UseWgc ? 1 : 0) + (UseGdi ? 1 : 0) > 1;
 
-        double periodMs = 1000.0 / PollHz;
+        // Fixed for the life of the loop: a child that is stopped simply never signals,
+        // so there is nothing to rebuild when the ladder starts or stops one.
+        var childSignals = new[] { _dda.FrameSignal, _wgc.FrameSignal, _gdi.FrameSignal };
 
         try
         {
@@ -324,7 +331,11 @@ public sealed class HybridBackend : CaptureBackendBase
                         break;
                 }
 
-                Thread.Sleep((int)Math.Max(1, periodMs));
+                // Wake on the frame itself rather than polling for it. Thread.Sleep(4)
+                // here really slept 15.6 ms - the system timer tick - so every frame spent
+                // an average of 8 ms merely waiting to be noticed. The timeout keeps the
+                // ladder ticking while nothing arrives, which is when it has work to do.
+                WaitHandle.WaitAny(childSignals, IdleTickMs);
             }
         }
         finally
@@ -336,11 +347,11 @@ public sealed class HybridBackend : CaptureBackendBase
         }
     }
 
-    /// <summary>Republishes the active child's frame as our own.</summary>
+    /// <summary>Republishes the active child's frame as our own, keeping its timestamp.</summary>
     void Relay(CaptureBackendBase child, ref long version)
     {
-        if (child.TryGetImage(ref _relay, ref version, out int w, out int h, out int stride))
-            PublishImage(_relay, w, h, stride);
+        if (child.TryGetImage(ref _relay, ref version, out int w, out int h, out int stride, out long stamp))
+            PublishImage(_relay, w, h, stride, stamp);
     }
 
     static string Describe(Source s) => s switch

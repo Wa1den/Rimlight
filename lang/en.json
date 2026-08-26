@@ -112,6 +112,10 @@
   "stats.capture": "capture",
   "stats.output": "output",
   "stats.port": "port",
+  "stats.latency": "latency",
+  "stats.ms": "ms",
+  "stats.worst": "worst",
+  "stats.dropped": "dropped",
   "stats.sources": "sources",
   "stats.sent": "sent",
   "stats.skipped": "identical skipped",
@@ -133,5 +137,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "13"
+  "_version": "14"
 }

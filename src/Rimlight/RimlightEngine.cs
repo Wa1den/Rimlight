@@ -76,17 +76,23 @@ public sealed class RimlightEngine : IDisposable
     /// the compositor reports, so it covers the whole path - capture, readback, relay,
     /// pacing, colour - and is the number to watch when tuning any of them.
     ///
-    /// Three figures because one will not do: the average says how it feels, the rolling
-    /// worst catches the stalls, and the peak is the one that answers "did that ever
-    /// happen". The worst is taken over ten seconds rather than one - a figure that
-    /// resets every second cannot be read off a screen.
+    /// Three figures because one will not do. The average says how it feels; the worst
+    /// over the last ten seconds catches the stalls the average hides; and p99 says
+    /// whether that worst is one frame in a thousand or one in twenty, which is the
+    /// difference between a curiosity and the thing to fix next.
+    ///
+    /// A worst-ever peak was tried here and thrown out: one hiccup at startup pinned it
+    /// for the rest of the session, after which it said nothing at all.
     /// </summary>
     public double FrameAgeMs { get; private set; }
     public double FrameAgeMaxMs { get; private set; }
-    public double FrameAgePeakMs { get; private set; }
+    public double FrameAgeP99Ms { get; private set; }
 
     /// <summary>Seconds the rolling worst looks back over.</summary>
     const int AgeWindowSeconds = 10;
+
+    /// <summary>Frames kept for the percentile - about eight seconds at 60 fps.</summary>
+    const int AgeSamples = 512;
 
     /// <summary>Frames dropped because the serial port had not drained the previous one.</summary>
     public long FramesDropped => _device.FramesDropped;
@@ -207,7 +213,7 @@ public sealed class RimlightEngine : IDisposable
         _device.Open(cfg.PortName, cfg.BaudRate, _zones.Length);
 
         _restartCapture = false;
-        FrameAgeMs = FrameAgeMaxMs = FrameAgePeakMs = 0;
+        FrameAgeMs = FrameAgeMaxMs = FrameAgeP99Ms = 0;
         _running = true;
         _outputThread = new Thread(OutputLoop)
         {
@@ -237,6 +243,11 @@ public sealed class RimlightEngine : IDisposable
         // one bucket per second; the worst shown is the worst still inside the window
         var ageSeconds = new double[AgeWindowSeconds];
         int ageSecond = 0;
+
+        // and every sample itself, for the percentile
+        var ageRing = new double[AgeSamples];
+        var ageSort = new double[AgeSamples];
+        int ageRingIdx = 0, ageRingCount = 0;
 
         // Rebuilt only when the capture object itself changes, which is why the swap was
         // moved onto this thread - see RestartCapture.
@@ -363,6 +374,10 @@ public sealed class RimlightEngine : IDisposable
                 ageSum += ageMs;
                 ageCount++;
                 if (ageMs > ageMax) ageMax = ageMs;
+
+                ageRing[ageRingIdx] = ageMs;
+                ageRingIdx = (ageRingIdx + 1) % AgeSamples;
+                if (ageRingCount < AgeSamples) ageRingCount++;
             }
 
             if (fpsWindow.ElapsedMilliseconds >= 1000)
@@ -377,7 +392,13 @@ public sealed class RimlightEngine : IDisposable
                 foreach (double v in ageSeconds)
                     if (v > rolling) rolling = v;
                 FrameAgeMaxMs = rolling;
-                if (ageMax > FrameAgePeakMs) FrameAgePeakMs = ageMax;
+
+                if (ageRingCount > 0)
+                {
+                    Array.Copy(ageRing, ageSort, ageRingCount);
+                    Array.Sort(ageSort, 0, ageRingCount);
+                    FrameAgeP99Ms = ageSort[Math.Min(ageRingCount - 1, (int)(ageRingCount * 0.99))];
+                }
 
                 framesThisWindow = 0;
                 ageSum = ageMax = 0;

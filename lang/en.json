@@ -115,7 +115,6 @@
   "stats.latency": "latency",
   "stats.ms": "ms",
   "stats.worst": "worst in 10 s",
-  "stats.peak": "peak",
   "stats.dropped": "dropped",
   "stats.sources": "sources",
   "stats.sent": "sent",
@@ -138,5 +137,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "15"
+  "_version": "16"
 }

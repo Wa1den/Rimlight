@@ -1072,8 +1072,8 @@ public partial class MainWindow : Window
         // end to end: from the moment the compositor put the picture on screen to the
         // moment its colours went out of the port
         _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
+                              $"; p99 {_engine.FrameAgeP99Ms:F1}" +
                               $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
-                              $"; {Loc.T("stats.peak")} {_engine.FrameAgePeakMs:F1}" +
                               $"; {Loc.T("stats.dropped")} {_engine.FramesDropped}";
         _statValues[6].Text = capLine;
 

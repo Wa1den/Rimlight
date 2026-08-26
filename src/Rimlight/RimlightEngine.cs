@@ -257,6 +257,9 @@ public sealed class RimlightEngine : IDisposable
         // instead would have hidden the very delay a refused write causes.
         long pendingStamp = 0;
 
+        // when capture last handed over a frame, to tell a still screen from a moving one
+        double lastFrameMs = 0;
+
         // Rebuilt only when the capture object itself changes, which is why the swap was
         // moved onto this thread - see RestartCapture.
         HybridBackend? waitTarget = null;
@@ -371,13 +374,24 @@ public sealed class RimlightEngine : IDisposable
                 lock (_previewLock) Buffer.BlockCopy(_output, 0, _preview, 0, _output.Length);
             }
 
-            // Send on every tick, not only when capture had something new. A still screen
-            // produces no frames at all, and the firmware blanks the strip after 10 s of
-            // silence - so the colours have to keep going out regardless. Send() itself
-            // skips identical frames and honours the keepalive interval.
+            // A still screen produces no frames at all, the smoothing still has to
+            // advance on the clock, and the firmware blanks the strip after 10 s of
+            // silence - so with nothing arriving the colours go out on every tick.
+            //
+            // While capture is delivering they do not. Those ticks have nothing to add:
+            // the smoothing they advance is carried by the next frame anyway, and the
+            // send takes the controller's slot from the frame about to arrive, which is
+            // then refused for coming too soon and waits out a whole further period.
+            // Output at 60 and capture at 55 are close enough that this happened on
+            // nearly every frame - two cadences beating against each other, and the
+            // dropped counter was the sound of it.
+            if (haveNewFrame) lastFrameMs = startMs;
+            bool flowing = lastFrameMs > 0 && startMs - lastFrameMs < periodMs * 2;
+
             long sentBefore = _device.FramesSent;
 
-            if (_output.Length > 0 && !_device.Send(_output, _cfg.SendOnlyOnChange, _cfg.KeepAliveMs))
+            if (_output.Length > 0 && (haveNewFrame || !flowing) &&
+                !_device.Send(_output, _cfg.SendOnlyOnChange, _cfg.KeepAliveMs))
             {
                 // the port dropped; retry at a human pace rather than spinning
                 long now = Environment.TickCount64;

@@ -147,5 +147,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "20"
+  "_version": "21"
 }

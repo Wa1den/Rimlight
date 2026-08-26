@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "20";
+    const string Version = "21";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -260,9 +260,6 @@ public static class Loc
         ["main.diag.head"] = "Статистика и лог",
         ["main.stats.detailed"] = "Подробная статистика",
         ["main.stats.detailed.note"] = "Данные о задержках с разделением по этапам. Пишутся и в лог, если он включён.",
-        ["main.diag.head"] = "Statistics and log",
-        ["main.stats.detailed"] = "Detailed statistics",
-        ["main.stats.detailed.note"] = "Latency figures broken down by stage. Written to the log too, when it is on.",
         ["main.stats.note"] = "Блок статистики под превью: метод захвата, частота кадров, состояние порта.",
         ["nav.preview"] = "Показывать превью",
         ["main.tray"] = "Сворачивать в трей",
@@ -422,6 +419,9 @@ public static class Loc
         ["about.repo"] = "Project repository:",
         ["about.firmware"] = "Controller firmware and the original idea:",
         ["main.stats"] = "Show statistics",
+        ["main.diag.head"] = "Statistics and log",
+        ["main.stats.detailed"] = "Detailed statistics",
+        ["main.stats.detailed.note"] = "Latency figures broken down by stage. Written to the log too, when it is on.",
         ["main.stats.note"] = "The statistics block under the preview: capture method, frame rates, port state.",
         ["nav.preview"] = "Show preview",
         ["main.tray"] = "Minimise to tray",

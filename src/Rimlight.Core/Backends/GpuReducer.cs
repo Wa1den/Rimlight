@@ -66,6 +66,16 @@ public sealed class GpuReducer : IDisposable
     public long FreshHits { get; private set; }
 
     /// <summary>
+    /// Whether the last read returned the frame just handed in, or an older ring slot.
+    ///
+    /// The difference matters to the caller, not just to statistics: an older slot is a
+    /// frame stale by definition, and its replacement is already on the card. Publishing
+    /// it is not free - downstream it costs a second pass through the whole output path
+    /// for a picture that is about to be superseded.
+    /// </summary>
+    public bool LastReadFresh { get; private set; }
+
+    /// <summary>
     /// True while a reduction the GPU has not finished with is still sitting in the ring.
     ///
     /// Worth knowing to the caller. When the card is busy the wait above gives up and the
@@ -221,6 +231,7 @@ public sealed class GpuReducer : IDisposable
                 {
                     _freshMisses = 0;
                     FreshHits++;
+                    LastReadFresh = true;
                     return (fresh.r, fresh.g, fresh.b, fresh.isBlack, true);
                 }
                 if (Stopwatch.GetTimestamp() >= deadline) break;
@@ -233,6 +244,7 @@ public sealed class GpuReducer : IDisposable
 
         // Walk newest-first and take the first slot the GPU has already finished with.
         // MapFlags.DoNotWait turns "not ready" into a failed Result instead of a stall.
+        LastReadFresh = false;
         for (int k = RingSize - 1; k >= 0; k--)
             if (TryReadSlot(k, out var result))
                 return (result.r, result.g, result.b, result.isBlack, true);
@@ -333,6 +345,7 @@ public sealed class GpuReducer : IDisposable
 
             // the ring is empty now, so waiting on a fresh slot is worth trying again
             _freshMisses = 0;
+            LastReadFresh = true;
 
             r = result.r; g = result.g; b = result.b; isBlack = result.isBlack;
             return true;

@@ -249,6 +249,11 @@ public sealed class RimlightEngine : IDisposable
         var ageSort = new double[AgeSamples];
         int ageRingIdx = 0, ageRingCount = 0;
 
+        // Stamp of the newest picture folded into the output buffer, held until that
+        // buffer actually reaches the wire. Timing it where the frame was processed
+        // instead would have hidden the very delay a refused write causes.
+        long pendingStamp = 0;
+
         // Rebuilt only when the capture object itself changes, which is why the swap was
         // moved onto this thread - see RestartCapture.
         HybridBackend? waitTarget = null;
@@ -355,6 +360,8 @@ public sealed class RimlightEngine : IDisposable
             // produces no frames at all, and the firmware blanks the strip after 10 s of
             // silence - so the colours have to keep going out regardless. Send() itself
             // skips identical frames and honours the keepalive interval.
+            long sentBefore = _device.FramesSent;
+
             if (_output.Length > 0 && !_device.Send(_output, _cfg.SendOnlyOnChange, _cfg.KeepAliveMs))
             {
                 // the port dropped; retry at a human pace rather than spinning
@@ -366,11 +373,15 @@ public sealed class RimlightEngine : IDisposable
                 }
             }
 
-            // Only frames that carried new pixels: a keepalive resend says nothing about
-            // how fast the picture is getting through.
-            if (haveNewFrame && stamp != 0)
+            if (haveNewFrame && stamp != 0) pendingStamp = stamp;
+
+            // Only frames that carried new pixels, and only once they are on the wire: a
+            // keepalive resend says nothing about how fast the picture gets through, and
+            // a frame the port refused has not got through at all yet.
+            if (pendingStamp != 0 && _device.FramesSent != sentBefore)
             {
-                double ageMs = (Stopwatch.GetTimestamp() - stamp) * 1000.0 / Stopwatch.Frequency;
+                double ageMs = (Stopwatch.GetTimestamp() - pendingStamp) * 1000.0 / Stopwatch.Frequency;
+                pendingStamp = 0;
                 ageSum += ageMs;
                 ageCount++;
                 if (ageMs > ageMax) ageMax = ageMs;

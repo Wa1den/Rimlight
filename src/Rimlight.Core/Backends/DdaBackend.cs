@@ -246,6 +246,13 @@ public sealed class DdaBackend : CaptureBackendBase
                             if (px != null) Snapshot.Save(Name, px, sw2, sh2, stride2);
                         }
 
+                        // The card was busy and this is an older slot - but the frame that
+                        // replaces it is already queued, and the poll above will have it
+                        // within a millisecond or two. Sending both means the output thread
+                        // wakes twice per frame and the port throws away the fresher of the
+                        // two for arriving too soon after the staler one.
+                        if (!reducer.LastReadFresh) continue;
+
                         PublishImage(reducer.LastImage, reducer.ImageWidth, reducer.ImageHeight,
                                      reducer.ImageStride, reducer.LastImageStamp);
                         Metrics.NoteFrame(r, g, b, black, acquireMs, reduceMs);

@@ -95,11 +95,13 @@ public sealed class RimlightConfig
     public double CropMinPercent { get; set; } = 2.0;
 
     /// <summary>
-    /// Ceiling on the crop. 2.39:1 on a 16:9 screen puts about 17% of the height in each
-    /// bar, so the default leaves room for that and still refuses to eat a quarter of the
-    /// picture when a scene is merely dark.
+    /// Ceiling on the crop, as a percent of the side.
+    ///
+    /// Sized for a 21:9 screen, where 16:9 material leaves a pillar of about 12% at each
+    /// end. A 16:9 screen wants more: 2.39:1 film puts about 17% of the height in each
+    /// letterbox bar, and at this setting the sampling would stop short of the picture.
     /// </summary>
-    public double CropMaxPercent { get; set; } = 25.0;
+    public double CropMaxPercent { get; set; } = 14.0;
 
     /// <summary>Per-channel value below which a pixel counts as black.</summary>
     public int CropBlackLevel { get; set; } = 16;
@@ -109,11 +111,13 @@ public sealed class RimlightConfig
     /// of the picture - subtitles, the progress bar, the buttons of a player. Percent of
     /// the side.
     ///
-    /// Five is what the control strip of a player costs: subtitles are handled by ignoring
-    /// the middle of each row and hold at any setting, but the buttons sit out at the ends
-    /// where they are read, and below five the bar is lost the moment the mouse moves.
+    /// Subtitles are handled by ignoring the middle of each row and hold at any setting,
+    /// but the buttons of a player sit out at the ends where they are read: below five the
+    /// bar is lost the moment the mouse moves, and the default leaves margin above that.
+    /// Raised too far, a genuinely thin band of picture is stepped over as if it were a
+    /// control as well.
     /// </summary>
-    public double CropOverlookPercent { get; set; } = 5.0;
+    public double CropOverlookPercent { get; set; } = 8.0;
 
     /// <summary>How long a new reading has to hold before the sampling moves.</summary>
     public double CropHoldMs { get; set; } = 700;
@@ -175,12 +179,12 @@ public sealed class RimlightConfig
     public double MinBacklight { get; set; }
 
     public double Saturation { get; set; } = 1.0;         // 1 = untouched
-    public double Gamma { get; set; } = 2.2;              // 2.2 = neutral round trip
-    public int TemperatureK { get; set; } = 6500;         // 6500 = neutral
+    public double Gamma { get; set; } = 1.0;              // 2.2 = neutral round trip
+    public int TemperatureK { get; set; } = 5600;         // 6500 = neutral
     public double GainR { get; set; } = 1.0;
     public double GainG { get; set; } = 1.0;
     public double GainB { get; set; } = 1.0;
-    public bool Dithering { get; set; } = true;
+    public bool Dithering { get; set; }
 
     /// <summary>
     /// What the strip is allowed to draw, in amperes. Zero, the default, is no ceiling.
@@ -232,8 +236,8 @@ public sealed class RimlightConfig
     }
 
     /// <summary>Asymmetric smoothing: light rises quickly, falls gently.</summary>
-    public double SmoothingRise { get; set; } = 0.55;
-    public double SmoothingFall { get; set; } = 0.18;
+    public double SmoothingRise { get; set; } = 0.9;
+    public double SmoothingFall { get; set; } = 0.9;
 
     /// <summary>
     /// The subset the colour pipeline actually reads. Handing it the whole config would
@@ -275,7 +279,7 @@ public sealed class RimlightConfig
     /// Skips identical frames. The stock firmware blanks the strip after OFF_TIME (10 s)
     /// of silence, so a keepalive is mandatory, not optional.
     /// </summary>
-    public bool SendOnlyOnChange { get; set; } = true;
+    public bool SendOnlyOnChange { get; set; }
     public int KeepAliveMs { get; set; } = 2000;
 
     /// <summary>
@@ -285,7 +289,12 @@ public sealed class RimlightConfig
     /// </summary>
     public bool PublishFrames { get; set; }
 
-    public bool MinimizeToTray { get; set; } = true;
+    /// <summary>
+    /// The close button hides the window instead of quitting. Off by default: a window
+    /// that will not close is a surprise, and the tray icon is there to be found only by
+    /// someone who already knows the program is running.
+    /// </summary>
+    public bool MinimizeToTray { get; set; }
 
     /// <summary>Open straight into the tray - useful together with autostart.</summary>
     public bool StartMinimized { get; set; }
@@ -313,7 +322,7 @@ public sealed class RimlightConfig
     public bool ShowPreview { get; set; } = true;
 
     /// <summary>The statistics block under the preview; only visible while the preview is.</summary>
-    public bool ShowStats { get; set; }
+    public bool ShowStats { get; set; } = true;
 
     /// <summary>
     /// Adds the diagnostic rows - latency, its split by stage, the source breakdown - and
@@ -324,7 +333,7 @@ public sealed class RimlightConfig
 
     public bool OffOnExit { get; set; } = true;
     public bool OffOnDisplayOff { get; set; } = true;
-    public bool OffOnLock { get; set; } = true;
+    public bool OffOnLock { get; set; }
     public bool OffOnSuspend { get; set; } = true;
 
     // ---- persistence --------------------------------------------------------
@@ -437,6 +446,37 @@ public sealed class RimlightConfig
         foreach (var prop in typeof(RimlightConfig).GetProperties())
             if (prop.CanRead && prop.CanWrite)
                 prop.SetValue(this, prop.GetValue(other));
+    }
+
+    /// <summary>
+    /// Settings that describe this particular installation rather than a preference, and
+    /// so survive a reset: which screen and port, how the strip is physically laid out,
+    /// where the window sits, and which language the interface is in.
+    ///
+    /// Everything else is reset by name lookup rather than by an explicit list, so a
+    /// setting added later is covered without anyone having to remember this method.
+    /// </summary>
+    static readonly string[] Preserved =
+    {
+        nameof(MonitorDeviceName), nameof(MonitorModel), nameof(CaptureMode),
+        nameof(PortName), nameof(BaudRate),
+
+        nameof(TopCount), nameof(BottomCount), nameof(LeftCount), nameof(RightCount),
+        nameof(StartCorner), nameof(CounterClockwise), nameof(IndexOffset),
+        nameof(EdgeMarginPercent), nameof(EdgeMarginPercentV), nameof(DepthPercent),
+
+        nameof(Language),
+        nameof(WindowWidth), nameof(WindowHeight), nameof(WindowLeft), nameof(WindowTop),
+        nameof(WindowMaximized)
+    };
+
+    public void ResetToDefaults()
+    {
+        var shipped = new RimlightConfig();
+
+        foreach (var prop in typeof(RimlightConfig).GetProperties())
+            if (prop.CanRead && prop.CanWrite && Array.IndexOf(Preserved, prop.Name) < 0)
+                prop.SetValue(this, prop.GetValue(shipped));
     }
 
     public void Save()

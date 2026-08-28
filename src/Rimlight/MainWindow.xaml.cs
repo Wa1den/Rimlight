@@ -457,10 +457,14 @@ public partial class MainWindow : Window
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
             var exportBtn = new Button { Content = Loc.T("main.export"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
             exportBtn.Click += (_, _) => ExportConfig();
-            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(8, 4, 8, 4) };
+            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
             importBtn.Click += (_, _) => ImportConfig();
+            var resetBtn = new Button { Content = Loc.T("main.reset"), Padding = new Thickness(8, 4, 8, 4) };
+            resetBtn.Click += (_, _) => ResetConfig();
             row.Children.Add(exportBtn);
             row.Children.Add(importBtn);
+            row.Children.Add(resetBtn);
+            row.Children.Add(HelpIcon(Loc.T("main.reset.note")));
             panel.Children.Add(row);
 
             var pathText = Text("", dim: true);
@@ -978,6 +982,29 @@ public partial class MainWindow : Window
             MessageBox.Show(Loc.T("dialog.loaded"));
         }
         catch (Exception ex) { MessageBox.Show(Loc.T("dialog.loadFail") + ex.Message); }
+    }
+
+    /// <summary>
+    /// Applied live like any other edit rather than written straight to disk: a reset is a
+    /// large change to look at, and the Cancel button has to be able to take it back.
+    /// </summary>
+    void ResetConfig()
+    {
+        if (MessageBox.Show(Loc.T("dialog.reset"), Loc.T("main.reset"),
+                            MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+            return;
+
+        _cfg.ResetToDefaults();
+
+        ProbeLog.Configure(RimlightConfig.LogPath, _cfg.WriteLog);
+        Autostart.Set(_cfg.Autostart);
+
+        BuildSettings();
+        ApplyPreviewLayout();
+        MarkDirty();
+
+        // the zones themselves are untouched, but the crop settings above them are not
+        _engine.RequestRelayout();
     }
 
     // ---- preview ------------------------------------------------------------

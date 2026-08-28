@@ -32,6 +32,8 @@
   "main.language.note": "Translations are JSON files in the lang folder next to the settings. A file added there appears in the list on the next start, with untranslated lines taken from English. The README describes how to make one.",
   "main.export": "Export settings",
   "main.import": "Import",
+  "main.reset": "Defaults",
+  "main.reset.note": "Puts the settings back to their standard values. The chosen screen and port, the strip layout, the language and the window position are left alone. Like any other edit it applies at once and reaches the disk on Apply.",
   "main.exit": "Exit",
   "main.paths": "Settings: {0}",
   "device.monitor": "Monitor",
@@ -153,6 +155,7 @@
   "dialog.filter": "Rimlight settings (*.json)|*.json",
   "dialog.saveFail": "Could not save: ",
   "dialog.loadFail": "Could not read: ",
+  "dialog.reset": "Put the settings back to their standard values? The device, the layout and the language are not affected.",
   "dialog.loaded": "Settings loaded and applied.",
   "tray.show": "Show",
   "apply": "Apply",
@@ -163,5 +166,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "26"
+  "_version": "27"
 }

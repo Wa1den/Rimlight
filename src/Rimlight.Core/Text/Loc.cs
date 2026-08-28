@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "26";
+    const string Version = "27";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -271,6 +271,8 @@ public static class Loc
         ["main.language.note"] = "Переводы лежат в JSON-файлах в папке lang рядом с настройками. Добавленный туда файл появляется в списке при следующем запуске, непереведённые строки берутся из английского. Как сделать перевод, описано в README.",
         ["main.export"] = "Экспорт настроек",
         ["main.import"] = "Импорт",
+        ["main.reset"] = "По умолчанию",
+        ["main.reset.note"] = "Возвращает настройки к стандартным значениям. Выбор монитора и порта, раскладка ленты, язык и положение окна не затрагиваются. Как и любая другая правка, применяется сразу, а на диск попадает по кнопке «Применить».",
         ["main.exit"] = "Выход",
         ["main.paths"] = "Настройки: {0}",
 
@@ -401,6 +403,7 @@ public static class Loc
         ["dialog.filter"] = "Настройки Rimlight (*.json)|*.json",
         ["dialog.saveFail"] = "Не удалось сохранить: ",
         ["dialog.loadFail"] = "Не удалось прочитать: ",
+        ["dialog.reset"] = "Вернуть настройки к стандартным значениям? Устройство, раскладка и язык не изменятся.",
         ["dialog.loaded"] = "Настройки загружены и применены.",
         ["tray.show"] = "Показать",
         ["apply"] = "Применить",
@@ -449,6 +452,8 @@ public static class Loc
         ["main.language.note"] = "Translations are JSON files in the lang folder next to the settings. A file added there appears in the list on the next start, with untranslated lines taken from English. The README describes how to make one.",
         ["main.export"] = "Export settings",
         ["main.import"] = "Import",
+        ["main.reset"] = "Defaults",
+        ["main.reset.note"] = "Puts the settings back to their standard values. The chosen screen and port, the strip layout, the language and the window position are left alone. Like any other edit it applies at once and reaches the disk on Apply.",
         ["main.exit"] = "Exit",
         ["main.paths"] = "Settings: {0}",
 
@@ -579,6 +584,7 @@ public static class Loc
         ["dialog.filter"] = "Rimlight settings (*.json)|*.json",
         ["dialog.saveFail"] = "Could not save: ",
         ["dialog.loadFail"] = "Could not read: ",
+        ["dialog.reset"] = "Put the settings back to their standard values? The device, the layout and the language are not affected.",
         ["dialog.loaded"] = "Settings loaded and applied.",
         ["tray.show"] = "Show",
         ["apply"] = "Apply",

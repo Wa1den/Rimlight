@@ -189,7 +189,19 @@ public sealed class RimlightConfig
     };
 
     // ---- output -------------------------------------------------------------
-    public int MaxFps { get; set; } = 60;
+
+    /// <summary>
+    /// Ceiling on how often a frame is reduced and sent, in frames per second. Zero, the
+    /// default, removes the ceiling and leaves only the floor the controller itself sets.
+    ///
+    /// The cap is not what protects the strip: <see cref="AdalightDevice"/> already refuses
+    /// a frame that comes closer together than the controller's own cycle, whatever this
+    /// says. What the cap saves is graphics card work, and it is paid for in latency,
+    /// because a frame arriving inside the throttle window is dropped rather than held -
+    /// the picture then waits for the next one. Measured through the screen with a camera
+    /// at 240 fps: 30 ms from screen to strip at 60, 10-20 ms with no cap.
+    /// </summary>
+    public int MaxFps { get; set; }
 
     /// <summary>
     /// Skips identical frames. The stock firmware blanks the strip after OFF_TIME (10 s)

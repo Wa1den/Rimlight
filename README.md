@@ -59,8 +59,9 @@
 далее N x (R, G, B)
 ```
 
-На скорости 1 Мбод кадр для 122 диодов занимает 372 байта, что даёт максимум около
-268 кадров в секунду — значительно больше, чем выдаёт захват.
+На скорости 1 Мбод кадр для 122 диодов занимает 372 байта, то есть 3,7 мс на проводе;
+вместе с 3,7 мс на защёлкивание ленты это даёт максимум около 135 кадров в секунду —
+больше, чем выдаёт захват.
 
 ## Сборка
 
@@ -96,6 +97,14 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
    рассчитаны на фильмы 2.35:1 и 21:9. Если полосы теряются при всплывающей панели плеера,
    увеличивается **«Пропускать помехи»**; если кадрирование срабатывает на тёмных сценах —
    **«Задержка подтверждения»** и **«Минимальная полоса»**.
+6. **Захват** — ползунок **«Максимум кадров в секунду»** задаёт, как часто кадр экрана
+   сводится к цветам зон и уходит на ленту. Кадр, пришедший раньше этого срока,
+   отбрасывается, поэтому ограничение добавляет к задержке вывода до одного своего
+   периода: замер камерой на 240 кадров в секунду даёт около 30 мс от смены цвета на
+   экране до смены на ленте при пределе 60 и 10–20 мс в положении **«без ограничения»**,
+   которое стоит по умолчанию. Без ограничения частота упирается в период контроллера —
+   около 7 мс на 122 диода при 1 Мбод. Ограничение уменьшает число сводов кадра на
+   видеокарте, так что на слабой карте или в тяжёлой игре оно может оказаться полезным.
 
 Для проверки на настоящем кадре в `pics/Rainbow.jpg` лежит изображение с насыщенными
 цветами во всех частях кадра. Установленное фоном рабочего стола, оно показывает
@@ -160,12 +169,19 @@ Windows (DWM). Композиция выполняется на видеокар
 src/Rimlight        приложение: раскладка, цвет, COM-порт, интерфейс
 src/Rimlight.Core   бэкенды захвата, конвейер цвета, шина кадров, локализация
 tools/CaptureProbe  диагностика: все методы захвата рядом, с замерами
+tools/LatencyProbe  замер задержки «экран → лента» камерой на 240 к/с
 lang                шаблоны переводов, они же пишутся в %APPDATA%
 ```
 
 `tools/CaptureProbe` запускает все бэкенды захвата одновременно на одном мониторе и
 показывает частоту кадров, перцентили интервалов, стоимость кадра по стадиям и
 посекундную историю. Результаты измерений собраны в его README.
+
+`tools/LatencyProbe` выводит на экран ту же сетку зон, что читает движок, и раз в
+несколько секунд перекрашивает её в очередной базовый цвет, показывая рядом таймер до
+миллисекунд. Съёмка экрана и ленты одним кадром на 240 к/с даёт сквозную задержку
+снаружи — вместе с прошивкой и матрицей, там где внутренняя статистика заканчивается на
+записи в порт.
 
 ## Шина кадров
 
@@ -254,8 +270,9 @@ The frame format on the wire is stock Adalight:
 then N x (R, G, B)
 ```
 
-At 1 Mbaud a 122-LED frame takes 372 bytes, which allows up to about 268 frames per
-second — considerably more than capture produces.
+At 1 Mbaud a 122-LED frame takes 372 bytes, that is 3.7 ms on the wire; together with
+another 3.7 ms to latch into the strip that allows up to about 135 frames per second —
+more than capture produces.
 
 ## Building
 
@@ -291,6 +308,14 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
    values suit 2.35:1 and 21:9 films. If the bars are lost when the player controls appear,
    raise **Step over interference**; if the crop reacts to dark scenes, raise **Confirmation
    delay** and **Smallest bar**.
+6. **Capture** — the **Maximum frames per second** slider sets how often a screen frame
+   is reduced to zone colours and sent to the strip. A frame arriving inside that window is
+   dropped, so a limit adds up to one of its own periods to the output delay: measured with
+   a camera at 240 fps, a change takes about 30 ms to reach the strip with the limit at 60
+   and 10-20 ms at **no limit**, which is the default. With no limit the rate meets the
+   controller's own period instead - about 7 ms for 122 LEDs at 1 Mbaud. A limit cuts the
+   number of frame reductions done on the graphics card, which can be worth having on a
+   weak card or in a demanding game.
 
 For a check against a real frame, `pics/Rainbow.jpg` is an image with saturated colours
 in every part of the frame. Set as the desktop background, it shows the whole layout at
@@ -354,12 +379,18 @@ Two factors affect how often composition runs:
 src/Rimlight        the application: layout, colour, serial, UI
 src/Rimlight.Core   capture backends, colour pipeline, frame bus, localisation
 tools/CaptureProbe  diagnostic tool: every capture method side by side, with metrics
+tools/LatencyProbe  screen-to-strip latency, measured with a 240 fps phone camera
 lang                translation templates, also written to %APPDATA%
 ```
 
 `tools/CaptureProbe` runs all capture backends at once on a single monitor and reports
 frame rate, interval percentiles, per-stage frame cost and a second-by-second history. The
 measurement results are collected in its README.
+
+`tools/LatencyProbe` puts the engine's own zone grid on screen, repaints it in a primary
+colour every few seconds and runs a millisecond clock beside it. Filming the screen and
+the strip in one shot at 240 fps gives the end-to-end latency from outside - firmware and
+panel included, where the built-in statistics stop at the serial write.
 
 ## Frame bus
 

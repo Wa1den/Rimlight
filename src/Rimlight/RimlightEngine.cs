@@ -161,7 +161,9 @@ public sealed class RimlightEngine : IDisposable
 
         // no point reducing faster than the strip is driven; the surplus work would only
         // add to the GPU contention that starves the compositor in the first place
-        MinReduceIntervalMs = 1000.0 / Math.Clamp(cfg.MaxFps, 1, 240) * ReduceSlack,
+        // Zero while the cap is off: the loop replaces this with the controller's own
+        // period on its first pass, and until then there is nothing to hold frames back.
+        MinReduceIntervalMs = cfg.MaxFps > 0 ? 1000.0 / Math.Clamp(cfg.MaxFps, 1, 240) * ReduceSlack : 0,
         UseDda = cfg.CaptureMode is CaptureMode.Auto or CaptureMode.DdaOnly,
         UseWgc = cfg.CaptureMode is CaptureMode.Auto or CaptureMode.WgcOnly,
         UseGdi = cfg.CaptureMode is CaptureMode.Auto or CaptureMode.GdiOnly
@@ -297,9 +299,10 @@ public sealed class RimlightEngine : IDisposable
             // 3.7 ms on the wire and another 3.7 ms latching into the strip, so anything
             // above about 135 fps is a request the port can only answer by refusing - and
             // a refusal is worse than a slower cadence, because the colours then wait for
-            // a whole further period. The setting stays the ceiling; this is the floor.
-            double periodMs = Math.Max(1000.0 / Math.Clamp(_cfg.MaxFps, 1, 240),
-                                       _device.MinFramePeriodMs);
+            // a whole further period. The setting stays the ceiling; this is the floor,
+            // and with the ceiling removed it is the whole of the pacing.
+            double capMs = _cfg.MaxFps > 0 ? 1000.0 / Math.Clamp(_cfg.MaxFps, 1, 240) : 0;
+            double periodMs = Math.Max(capMs, _device.MinFramePeriodMs);
             double startMs = sw.Elapsed.TotalMilliseconds;
 
             // reducing faster than the strip is driven is wasted GPU work, so the capture

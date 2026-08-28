@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RootNamespace>LatencyProbe</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rimlight.Core\Rimlight.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    The grid has to be the application's grid, not a copy of it: a measurement taken on
+    zones that drifted from the real ones measures nothing. The layout maths and the
+    settings file live in the application project, so the sources are linked in rather
+    than duplicated - a change to either reaches this tool with the next build.
+
+    CropDetector only comes along because RimlightConfig.ToCropSettings names the type;
+    nothing here runs the detector.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Rimlight\Config.cs" Link="Shared\Config.cs" />
+    <Compile Include="..\..\src\Rimlight\CropDetector.cs" Link="Shared\CropDetector.cs" />
+    <Compile Include="..\..\src\Rimlight\LedLayout.cs" Link="Shared\LedLayout.cs" />
+    <Compile Include="..\..\src\Rimlight\ScreenChoice.cs" Link="Shared\ScreenChoice.cs" />
+  </ItemGroup>
+
+</Project>

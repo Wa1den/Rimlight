@@ -648,7 +648,16 @@ public partial class MainWindow : Window
             };
             panel.Children.Add(Labeled(Loc.T("capture.method"), _modeBox, Loc.T("capture.method.note")));
 
-            panel.Children.Add(Slider(Loc.T("capture.fps"), _cfg.MaxFps, 10, 144, 1, v => _cfg.MaxFps = (int)v));
+            // The top of the scale is "no limit" rather than a number, and it is where the
+            // slider starts out. Above about 135 fps there is nothing left to cap anyway -
+            // the controller's own cycle is already the floor - and the cap costs latency,
+            // because a frame arriving inside its window is dropped rather than held.
+            const double fpsFree = 145;
+            panel.Children.Add(Slider(Loc.T("capture.fps"), _cfg.MaxFps <= 0 ? fpsFree : _cfg.MaxFps,
+                10, fpsFree, 1,
+                v => _cfg.MaxFps = v >= fpsFree ? 0 : (int)v,
+                v => v >= fpsFree ? Loc.T("capture.fps.free") : v.ToString("0"),
+                Loc.T("capture.fps.note")));
 
             panel.Children.Add(Check(Loc.T("capture.onchange"), _cfg.SendOnlyOnChange, v => _cfg.SendOnlyOnChange = v,
                 Loc.T("capture.onchange.note")));

@@ -101,6 +101,8 @@
   "capture.gdi": "GDI only (slow)",
   "capture.method.note": "Auto uses the fast methods and switches to the slow one when they stop delivering frames; applies immediately. DDA (Desktop Duplication) is the fastest. WGC (Windows Graphics Capture) is slightly slower and steadier in games and fullscreen applications. GDI is the slowest but works almost everywhere.",
   "capture.fps": "Maximum frames per second",
+  "capture.fps.free": "no limit",
+  "capture.fps.note": "Limits how often screen frames are reduced to zone colours, and with that the load on the graphics card. With no limit frames go through as fast as the strip can accept them. Limiting the frame rate can increase the delay before a change reaches the strip.",
   "capture.onchange": "Send only when colours change",
   "capture.onchange.note": "The firmware turns the strip off after 10 seconds without data, so an identical frame is still sent every 2 seconds.",
   "capture.publish": "Share frames with the case lighting module",
@@ -147,5 +149,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "21"
+  "_version": "22"
 }

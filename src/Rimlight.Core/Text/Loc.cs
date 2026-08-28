@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "21";
+    const string Version = "22";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -345,6 +345,8 @@ public static class Loc
         ["capture.gdi"] = "Только GDI (медленный)",
         ["capture.method.note"] = "Авто использует быстрые методы и переключается на медленный, когда они перестают выдавать кадры; применяется сразу. DDA (Desktop Duplication) — самый быстрый. WGC (Windows Graphics Capture) — немного медленнее, стабильнее в играх и полноэкранных приложениях. GDI — самый медленный, но работает почти везде.",
         ["capture.fps"] = "Максимум кадров в секунду",
+        ["capture.fps.free"] = "без ограничения",
+        ["capture.fps.note"] = "Ограничивает частоту, с которой кадры экрана сводятся к цветам зон, и вместе с ней нагрузку на видеокарту. Без ограничения кадры идут с той частотой, которую успевает принять лента. Ограничение кадров может повысить задержку вывода подсветки на ленту.",
         ["capture.onchange"] = "Отправлять только при смене цветов",
         ["capture.onchange.note"] = "Прошивка выключает ленту, если данные не приходят 10 секунд, поэтому одинаковый кадр всё равно отправляется раз в 2 секунды.",
         ["capture.publish"] = "Передавать кадры модулю подсветки корпуса",
@@ -507,6 +509,8 @@ public static class Loc
         ["capture.gdi"] = "GDI only (slow)",
         ["capture.method.note"] = "Auto uses the fast methods and switches to the slow one when they stop delivering frames; applies immediately. DDA (Desktop Duplication) is the fastest. WGC (Windows Graphics Capture) is slightly slower and steadier in games and fullscreen applications. GDI is the slowest but works almost everywhere.",
         ["capture.fps"] = "Maximum frames per second",
+        ["capture.fps.free"] = "no limit",
+        ["capture.fps.note"] = "Limits how often screen frames are reduced to zone colours, and with that the load on the graphics card. With no limit frames go through as fast as the strip can accept them. Limiting the frame rate can increase the delay before a change reaches the strip.",
         ["capture.onchange"] = "Send only when colours change",
         ["capture.onchange.note"] = "The firmware turns the strip off after 10 seconds without data, so an identical frame is still sent every 2 seconds.",
         ["capture.publish"] = "Share frames with the case lighting module",

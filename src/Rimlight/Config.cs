@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Rimlight.Leds;
@@ -463,7 +464,18 @@ public sealed class RimlightConfig
     /// Everything else is reset by name lookup rather than by an explicit list, so a
     /// setting added later is covered without anyone having to remember this method.
     /// </summary>
-    static readonly string[] Preserved =
+    /// <summary>
+    /// Where the window is and how big it is. Not settings the user edits - they are
+    /// written on the way out rather than by the Apply button - so they are left out of
+    /// both the reset and the comparison behind the unsaved-changes bar.
+    /// </summary>
+    static readonly string[] Geometry =
+    {
+        nameof(WindowWidth), nameof(WindowHeight), nameof(WindowLeft), nameof(WindowTop),
+        nameof(WindowMaximized)
+    };
+
+    static readonly string[] Preserved = new[]
     {
         nameof(MonitorDeviceName), nameof(MonitorModel), nameof(CaptureMode),
         nameof(PortName), nameof(BaudRate),
@@ -472,10 +484,29 @@ public sealed class RimlightConfig
         nameof(StartCorner), nameof(CounterClockwise), nameof(IndexOffset),
         nameof(EdgeMarginPercent), nameof(EdgeMarginPercentV), nameof(DepthPercent),
 
-        nameof(Language),
-        nameof(WindowWidth), nameof(WindowHeight), nameof(WindowLeft), nameof(WindowTop),
-        nameof(WindowMaximized)
-    };
+        nameof(Language)
+    }.Concat(Geometry).ToArray();
+
+    /// <summary>
+    /// Whether the two carry the same settings, so an edit that has been undone by hand
+    /// can stop counting as an unsaved change.
+    ///
+    /// Slider values compare exactly because a slider snaps to its tick and the value it
+    /// stores is a pure function of that tick - returning to the same position produces
+    /// the same double, bit for bit.
+    /// </summary>
+    public bool SameSettingsAs(RimlightConfig other)
+    {
+        foreach (var prop in typeof(RimlightConfig).GetProperties())
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            if (Array.IndexOf(Geometry, prop.Name) >= 0) continue;
+
+            if (!Equals(prop.GetValue(this), prop.GetValue(other))) return false;
+        }
+
+        return true;
+    }
 
     public void ResetToDefaults()
     {

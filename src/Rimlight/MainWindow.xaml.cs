@@ -405,7 +405,7 @@ public partial class MainWindow : Window
             {
                 if (_rebuildingUi) return;
                 _cfg.Language = Loc.Available[Math.Max(0, _langBox.SelectedIndex)];
-                _dirty = true;
+                MarkDirty();
                 Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(RimlightConfig.Path)!, "lang"));
         Loc.Load(_cfg.Language);
                 BuildSettings();          // the whole panel is built in code, so rebuild it
@@ -495,11 +495,37 @@ public partial class MainWindow : Window
             _monitorBox.SelectedIndex = chosen == null ? 0 : Math.Max(0, _monitors.IndexOf(chosen));
             // Without this the screen was applied live and then lost: only the applied
             // copy of the settings reaches disk, and nothing marked the choice as an edit.
-            _monitorBox.SelectionChanged += (_, _) => MarkDirty();
+            // The choice lands in the config here rather than in Restart: the unsaved bar
+            // compares the two copies, and a change that has not reached the config yet is
+            // a change it cannot see. Capture keeps running on the screen it resolved at
+            // start-up until the reconnect button is pressed.
+            _monitorBox.SelectionChanged += (_, _) =>
+            {
+                if (_rebuildingUi) return;
+
+                int i = _monitorBox.SelectedIndex;
+                if (i >= 0 && i < _monitors.Count)
+                {
+                    _cfg.MonitorDeviceName = _monitors[i].DeviceName;
+                    _cfg.MonitorModel = _monitors[i].Model;
+                }
+                MarkDirty();
+            };
             panel.Children.Add(Labeled(Loc.T("device.monitor"), _monitorBox));
 
             _portBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), IsEditable = true, Text = _cfg.PortName };
             foreach (var p in SerialPort.GetPortNames()) _portBox.Items.Add(p);
+
+            // The box is editable, so the port can be typed as well as picked; the text
+            // event covers both, where SelectionChanged would miss anything typed.
+            _portBox.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent,
+                new TextChangedEventHandler((_, _) =>
+                {
+                    if (_rebuildingUi) return;
+                    _cfg.PortName = string.IsNullOrWhiteSpace(_portBox.Text) ? "COM4" : _portBox.Text.Trim();
+                    MarkDirty();
+                }));
+
             panel.Children.Add(Labeled(Loc.T("device.port"), _portBox));
 
             panel.Children.Add(IntBox(Loc.T("device.baud"), _cfg.BaudRate, v => _cfg.BaudRate = v,
@@ -527,7 +553,7 @@ public partial class MainWindow : Window
             {
                 if (_rebuildingUi) return;
                 _cfg.StartCorner = (Corner)Math.Max(0, _cornerBox.SelectedIndex);
-                _dirty = true;
+                MarkDirty();
                 _engine.RequestRelayout();
             };
             panel.Children.Add(Labeled(Loc.T("layout.corner"), _cornerBox));
@@ -674,7 +700,7 @@ public partial class MainWindow : Window
             {
                 if (_rebuildingUi) return;
                 _cfg.CaptureMode = (CaptureMode)Math.Max(0, _modeBox.SelectedIndex);
-                _dirty = true;
+                MarkDirty();
                 _engine.RestartCapture();     // applies at once; the port is left alone
             };
             panel.Children.Add(Labeled(Loc.T("capture.method"), _modeBox, Loc.T("capture.method.note")));
@@ -877,10 +903,15 @@ public partial class MainWindow : Window
         _overlayButton.Content = Loc.T("layout.overlay.hide");
     }
 
+    /// <summary>
+    /// Compared against the last applied copy rather than latched, so putting a slider
+    /// back where it was takes the bar away again instead of leaving the user with a
+    /// change they cannot find.
+    /// </summary>
     void MarkDirty()
     {
         if (_rebuildingUi) return;
-        _dirty = true;
+        _dirty = !_cfg.SameSettingsAs(_saved);
     }
 
     void ApplyChanges()

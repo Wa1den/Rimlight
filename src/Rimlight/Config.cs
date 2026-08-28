@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Rimlight.Leds;
@@ -95,11 +96,13 @@ public sealed class RimlightConfig
     public double CropMinPercent { get; set; } = 2.0;
 
     /// <summary>
-    /// Ceiling on the crop. 2.39:1 on a 16:9 screen puts about 17% of the height in each
-    /// bar, so the default leaves room for that and still refuses to eat a quarter of the
-    /// picture when a scene is merely dark.
+    /// Ceiling on the crop, as a percent of the side.
+    ///
+    /// Sized for a 21:9 screen, where 16:9 material leaves a pillar of about 12% at each
+    /// end. A 16:9 screen wants more: 2.39:1 film puts about 17% of the height in each
+    /// letterbox bar, and at this setting the sampling would stop short of the picture.
     /// </summary>
-    public double CropMaxPercent { get; set; } = 25.0;
+    public double CropMaxPercent { get; set; } = 14.0;
 
     /// <summary>Per-channel value below which a pixel counts as black.</summary>
     public int CropBlackLevel { get; set; } = 16;
@@ -109,14 +112,22 @@ public sealed class RimlightConfig
     /// of the picture - subtitles, the progress bar, the buttons of a player. Percent of
     /// the side.
     ///
-    /// Five is what the control strip of a player costs: subtitles are handled by ignoring
-    /// the middle of each row and hold at any setting, but the buttons sit out at the ends
-    /// where they are read, and below five the bar is lost the moment the mouse moves.
+    /// Subtitles are handled by ignoring the middle of each row and hold at any setting,
+    /// but the buttons of a player sit out at the ends where they are read: below five the
+    /// bar is lost the moment the mouse moves, and the default leaves margin above that.
+    /// Raised too far, a genuinely thin band of picture is stepped over as if it were a
+    /// control as well.
     /// </summary>
-    public double CropOverlookPercent { get; set; } = 5.0;
+    public double CropOverlookPercent { get; set; } = 8.0;
 
     /// <summary>How long a new reading has to hold before the sampling moves.</summary>
     public double CropHoldMs { get; set; } = 700;
+
+    /// <summary>
+    /// Extra margin taken inside the picture once a bar is found, in percent of the side.
+    /// See <see cref="CropSettings.InsetPercent"/>.
+    /// </summary>
+    public double CropInsetPercent { get; set; } = 0.5;
 
     /// <summary>
     /// Spreads the picture across the whole ring, so the LEDs behind a bar light from the
@@ -134,7 +145,8 @@ public sealed class RimlightConfig
         MaxPercent = CropMaxPercent,
         BlackLevel = CropBlackLevel,
         OverlookPercent = CropOverlookPercent,
-        HoldMs = CropHoldMs
+        HoldMs = CropHoldMs,
+        InsetPercent = CropInsetPercent
     };
 
     // ---- colour -------------------------------------------------------------
@@ -157,17 +169,76 @@ public sealed class RimlightConfig
     /// </summary>
     public double ShadowNeutral { get; set; }
 
+    /// <summary>
+    /// Level the strip never drops below, 0..1. Zero switches it off.
+    ///
+    /// Works with <see cref="MinLuma"/> rather than against it: the cutoff decides what
+    /// counts as black, and this decides what black looks like. Only LEDs whose every
+    /// channel is under the level are lifted, so a dark scene that still has a colour in
+    /// it keeps that colour.
+    /// </summary>
+    public double MinBacklight { get; set; }
+
     public double Saturation { get; set; } = 1.0;         // 1 = untouched
-    public double Gamma { get; set; } = 2.2;              // 2.2 = neutral round trip
-    public int TemperatureK { get; set; } = 6500;         // 6500 = neutral
+    public double Gamma { get; set; } = 1.0;              // 2.2 = neutral round trip
+    public int TemperatureK { get; set; } = 5600;         // 6500 = neutral
     public double GainR { get; set; } = 1.0;
     public double GainG { get; set; } = 1.0;
     public double GainB { get; set; } = 1.0;
-    public bool Dithering { get; set; } = true;
+    public bool Dithering { get; set; }
+
+    /// <summary>
+    /// What the strip is allowed to draw, in amperes. Zero, the default, is no ceiling.
+    ///
+    /// Stated as a current rather than as a share of full brightness because that is what
+    /// the setting is actually about: the supply is a fixed number of amperes whatever the
+    /// strip is asked to show, and a share of full brightness would silently mean a
+    /// different current every time the LED count changed.
+    ///
+    /// Unlike <see cref="MaxBrightness"/> this only engages on frames that would really
+    /// cost that much, so an ordinary picture - where most of the strip is dim - is left
+    /// at full brightness.
+    /// </summary>
+    public double PowerLimitAmps { get; set; }
+
+    /// <summary>
+    /// What one LED draws at full white, in amperes. A WS2812 is three dice of about 20 mA
+    /// each; strips vary a little with the LED bin and the voltage that survives the run,
+    /// so this is a nameplate figure and not a measurement of any particular strip.
+    /// </summary>
+    public const double AmpsPerLedWhite = 0.060;
+
+    /// <summary>
+    /// What one LED draws showing nothing at all. The controller inside each package runs
+    /// whatever the colour is, and across a hundred-odd LEDs it adds up to a tenth of an
+    /// amp - small, but it is spent before any light is made, so the ceiling cannot hand
+    /// it out.
+    /// </summary>
+    public const double AmpsPerLedIdle = 0.001;
+
+    /// <summary>What the whole strip draws at full white, ceiling included.</summary>
+    [JsonIgnore]
+    public double FullWhiteAmps => TotalLeds * (AmpsPerLedWhite + AmpsPerLedIdle);
+
+    /// <summary>
+    /// The ceiling as the pipeline wants it: a share of full duty. One means no ceiling,
+    /// which is also what a setting at or above what the strip can draw comes to.
+    /// </summary>
+    [JsonIgnore]
+    public double PowerLimitFraction
+    {
+        get
+        {
+            if (PowerLimitAmps <= 0 || PowerLimitAmps >= FullWhiteAmps) return 1.0;
+
+            double forLight = PowerLimitAmps - TotalLeds * AmpsPerLedIdle;
+            return Math.Clamp(forLight / (TotalLeds * AmpsPerLedWhite), 0, 1);
+        }
+    }
 
     /// <summary>Asymmetric smoothing: light rises quickly, falls gently.</summary>
-    public double SmoothingRise { get; set; } = 0.55;
-    public double SmoothingFall { get; set; } = 0.18;
+    public double SmoothingRise { get; set; } = 0.9;
+    public double SmoothingFall { get; set; } = 0.9;
 
     /// <summary>
     /// The subset the colour pipeline actually reads. Handing it the whole config would
@@ -184,6 +255,8 @@ public sealed class RimlightConfig
         GainG = GainG,
         GainB = GainB,
         Dithering = Dithering,
+        MinBacklight = MinBacklight,
+        PowerLimit = PowerLimitFraction,
         SmoothingRise = SmoothingRise,
         SmoothingFall = SmoothingFall
     };
@@ -207,7 +280,7 @@ public sealed class RimlightConfig
     /// Skips identical frames. The stock firmware blanks the strip after OFF_TIME (10 s)
     /// of silence, so a keepalive is mandatory, not optional.
     /// </summary>
-    public bool SendOnlyOnChange { get; set; } = true;
+    public bool SendOnlyOnChange { get; set; }
     public int KeepAliveMs { get; set; } = 2000;
 
     /// <summary>
@@ -217,12 +290,24 @@ public sealed class RimlightConfig
     /// </summary>
     public bool PublishFrames { get; set; }
 
-    public bool MinimizeToTray { get; set; } = true;
+    /// <summary>
+    /// The close button hides the window instead of quitting. Off by default: a window
+    /// that will not close is a surprise, and the tray icon is there to be found only by
+    /// someone who already knows the program is running.
+    /// </summary>
+    public bool MinimizeToTray { get; set; }
 
     /// <summary>Open straight into the tray - useful together with autostart.</summary>
     public bool StartMinimized { get; set; }
     public bool Autostart { get; set; }
     public bool WriteLog { get; set; }
+
+    /// <summary>
+    /// Asks GitHub at startup whether a newer release exists. Off by default: it is the
+    /// only thing here that reaches outside the machine, and that is not a thing to start
+    /// doing without being asked.
+    /// </summary>
+    public bool CheckUpdates { get; set; }
     public string Language { get; set; } = "ru";
 
     // window geometry, so it comes back where it was left
@@ -245,7 +330,7 @@ public sealed class RimlightConfig
     public bool ShowPreview { get; set; } = true;
 
     /// <summary>The statistics block under the preview; only visible while the preview is.</summary>
-    public bool ShowStats { get; set; }
+    public bool ShowStats { get; set; } = true;
 
     /// <summary>
     /// Adds the diagnostic rows - latency, its split by stage, the source breakdown - and
@@ -256,7 +341,7 @@ public sealed class RimlightConfig
 
     public bool OffOnExit { get; set; } = true;
     public bool OffOnDisplayOff { get; set; } = true;
-    public bool OffOnLock { get; set; } = true;
+    public bool OffOnLock { get; set; }
     public bool OffOnSuspend { get; set; } = true;
 
     // ---- persistence --------------------------------------------------------
@@ -369,6 +454,67 @@ public sealed class RimlightConfig
         foreach (var prop in typeof(RimlightConfig).GetProperties())
             if (prop.CanRead && prop.CanWrite)
                 prop.SetValue(this, prop.GetValue(other));
+    }
+
+    /// <summary>
+    /// Settings that describe this particular installation rather than a preference, and
+    /// so survive a reset: which screen and port, how the strip is physically laid out,
+    /// where the window sits, and which language the interface is in.
+    ///
+    /// Everything else is reset by name lookup rather than by an explicit list, so a
+    /// setting added later is covered without anyone having to remember this method.
+    /// </summary>
+    /// <summary>
+    /// Where the window is and how big it is. Not settings the user edits - they are
+    /// written on the way out rather than by the Apply button - so they are left out of
+    /// both the reset and the comparison behind the unsaved-changes bar.
+    /// </summary>
+    static readonly string[] Geometry =
+    {
+        nameof(WindowWidth), nameof(WindowHeight), nameof(WindowLeft), nameof(WindowTop),
+        nameof(WindowMaximized)
+    };
+
+    static readonly string[] Preserved = new[]
+    {
+        nameof(MonitorDeviceName), nameof(MonitorModel), nameof(CaptureMode),
+        nameof(PortName), nameof(BaudRate),
+
+        nameof(TopCount), nameof(BottomCount), nameof(LeftCount), nameof(RightCount),
+        nameof(StartCorner), nameof(CounterClockwise), nameof(IndexOffset),
+        nameof(EdgeMarginPercent), nameof(EdgeMarginPercentV), nameof(DepthPercent),
+
+        nameof(Language)
+    }.Concat(Geometry).ToArray();
+
+    /// <summary>
+    /// Whether the two carry the same settings, so an edit that has been undone by hand
+    /// can stop counting as an unsaved change.
+    ///
+    /// Slider values compare exactly because a slider snaps to its tick and the value it
+    /// stores is a pure function of that tick - returning to the same position produces
+    /// the same double, bit for bit.
+    /// </summary>
+    public bool SameSettingsAs(RimlightConfig other)
+    {
+        foreach (var prop in typeof(RimlightConfig).GetProperties())
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            if (Array.IndexOf(Geometry, prop.Name) >= 0) continue;
+
+            if (!Equals(prop.GetValue(this), prop.GetValue(other))) return false;
+        }
+
+        return true;
+    }
+
+    public void ResetToDefaults()
+    {
+        var shipped = new RimlightConfig();
+
+        foreach (var prop in typeof(RimlightConfig).GetProperties())
+            if (prop.CanRead && prop.CanWrite && Array.IndexOf(Preserved, prop.Name) < 0)
+                prop.SetValue(this, prop.GetValue(shipped));
     }
 
     public void Save()

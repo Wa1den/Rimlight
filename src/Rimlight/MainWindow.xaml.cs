@@ -29,8 +29,8 @@ public partial class MainWindow : Window
 
     readonly List<UIElement> _pages = new();
 
-    readonly TextBlock[] _statLabels = new TextBlock[8];
-    readonly TextBlock[] _statValues = new TextBlock[8];
+    readonly TextBlock[] _statLabels = new TextBlock[9];
+    readonly TextBlock[] _statValues = new TextBlock[9];
 
     /// <summary>Window width to come back to when the preview is switched on again.</summary>
     double _wideWidth;
@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     ComboBox _monitorBox = null!, _portBox = null!, _cornerBox = null!, _modeBox = null!, _langBox = null!;
     TextBlock _totalText = null!;
     StackPanel _offsetHost = null!;
+    StackPanel _powerHost = null!;
     TextBlock _countNote = null!;
     TextBlock _cropStatus = null!;
     LayoutOverlay? _overlay;
@@ -150,6 +151,10 @@ public partial class MainWindow : Window
             if (!_cfg.ShowPreview) ApplyPreviewLayout();
 
             if (_cfg.StartMinimized) WindowState = WindowState.Minimized;
+
+            // after the engine, and not awaited: a slow answer from GitHub must not hold
+            // up the strip lighting
+            if (_cfg.CheckUpdates) _ = AnnounceUpdateAsync();
         };
 
         // the overlay is shown without activation, so its own key handler only fires while
@@ -168,6 +173,10 @@ public partial class MainWindow : Window
             if (WindowState == WindowState.Minimized && _cfg.MinimizeToTray)
                 Hide();
         };
+
+        // hidden for this session only - nothing is written down, so the next start says
+        // it again if the release is still newer
+        UpdateClose.Click += (_, _) => UpdateCard.Visibility = Visibility.Collapsed;
 
         _ui.Tick += (_, _) => RefreshUi();
         _ui.Start();
@@ -396,7 +405,7 @@ public partial class MainWindow : Window
             {
                 if (_rebuildingUi) return;
                 _cfg.Language = Loc.Available[Math.Max(0, _langBox.SelectedIndex)];
-                _dirty = true;
+                MarkDirty();
                 Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(RimlightConfig.Path)!, "lang"));
         Loc.Load(_cfg.Language);
                 BuildSettings();          // the whole panel is built in code, so rebuild it
@@ -456,10 +465,14 @@ public partial class MainWindow : Window
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
             var exportBtn = new Button { Content = Loc.T("main.export"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
             exportBtn.Click += (_, _) => ExportConfig();
-            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(8, 4, 8, 4) };
+            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
             importBtn.Click += (_, _) => ImportConfig();
+            var resetBtn = new Button { Content = Loc.T("main.reset"), Padding = new Thickness(8, 4, 8, 4) };
+            resetBtn.Click += (_, _) => ResetConfig();
             row.Children.Add(exportBtn);
             row.Children.Add(importBtn);
+            row.Children.Add(resetBtn);
+            row.Children.Add(HelpIcon(Loc.T("main.reset.note")));
             panel.Children.Add(row);
 
             var pathText = Text("", dim: true);
@@ -482,11 +495,37 @@ public partial class MainWindow : Window
             _monitorBox.SelectedIndex = chosen == null ? 0 : Math.Max(0, _monitors.IndexOf(chosen));
             // Without this the screen was applied live and then lost: only the applied
             // copy of the settings reaches disk, and nothing marked the choice as an edit.
-            _monitorBox.SelectionChanged += (_, _) => MarkDirty();
+            // The choice lands in the config here rather than in Restart: the unsaved bar
+            // compares the two copies, and a change that has not reached the config yet is
+            // a change it cannot see. Capture keeps running on the screen it resolved at
+            // start-up until the reconnect button is pressed.
+            _monitorBox.SelectionChanged += (_, _) =>
+            {
+                if (_rebuildingUi) return;
+
+                int i = _monitorBox.SelectedIndex;
+                if (i >= 0 && i < _monitors.Count)
+                {
+                    _cfg.MonitorDeviceName = _monitors[i].DeviceName;
+                    _cfg.MonitorModel = _monitors[i].Model;
+                }
+                MarkDirty();
+            };
             panel.Children.Add(Labeled(Loc.T("device.monitor"), _monitorBox));
 
             _portBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), IsEditable = true, Text = _cfg.PortName };
             foreach (var p in SerialPort.GetPortNames()) _portBox.Items.Add(p);
+
+            // The box is editable, so the port can be typed as well as picked; the text
+            // event covers both, where SelectionChanged would miss anything typed.
+            _portBox.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent,
+                new TextChangedEventHandler((_, _) =>
+                {
+                    if (_rebuildingUi) return;
+                    _cfg.PortName = string.IsNullOrWhiteSpace(_portBox.Text) ? "COM4" : _portBox.Text.Trim();
+                    MarkDirty();
+                }));
+
             panel.Children.Add(Labeled(Loc.T("device.port"), _portBox));
 
             panel.Children.Add(IntBox(Loc.T("device.baud"), _cfg.BaudRate, v => _cfg.BaudRate = v,
@@ -514,7 +553,7 @@ public partial class MainWindow : Window
             {
                 if (_rebuildingUi) return;
                 _cfg.StartCorner = (Corner)Math.Max(0, _cornerBox.SelectedIndex);
-                _dirty = true;
+                MarkDirty();
                 _engine.RequestRelayout();
             };
             panel.Children.Add(Labeled(Loc.T("layout.corner"), _cornerBox));
@@ -596,25 +635,43 @@ public partial class MainWindow : Window
                 v => _cfg.CropOverlookPercent = v, v => v.ToString("0.#"), Loc.T("crop.overlook.note")));
             Tune(Slider(Loc.T("crop.hold"), _cfg.CropHoldMs / 1000.0, 0.1, 3.0, 0.05,
                 v => _cfg.CropHoldMs = v * 1000.0, v => v.ToString("0.00"), Loc.T("crop.hold.note")));
+            Tune(Slider(Loc.T("crop.inset"), _cfg.CropInsetPercent, 0, 3, 0.1,
+                v => _cfg.CropInsetPercent = v,
+                v => v <= 0 ? Loc.T("off") : v.ToString("0.0"), Loc.T("crop.inset.note")));
 
             foreach (var e in tuning) e.IsEnabled = _cfg.AdaptiveCrop;
         });
 
-        AddTab(Loc.T("tab.color"), "", panel =>
+        // Brightness is kept apart from colour: how much light the strip makes is a
+        // different question from what colour it makes, and these are the settings reached
+        // for when the room is dark rather than when the wall is the wrong shade. The keys
+        // keep their "color." prefix - renaming them would silently drop the matching
+        // lines out of anyone's own translation file.
+        AddTab(Loc.T("tab.brightness"), "", panel =>
         {
-            panel.Children.Add(Slider(Loc.T("color.brightness"), _cfg.MaxBrightness, 0, 1, 0.01, v => _cfg.MaxBrightness = v));
+            panel.Children.Add(Slider(Loc.T("color.brightness"), _cfg.MaxBrightness, 0, 1, 0.01,
+                v => _cfg.MaxBrightness = v, help: Loc.T("color.brightness.note")));
 
             // cubic response: the useful range is the bottom few percent, and a linear
             // slider spends nearly all its travel on values that just black the strip out
             panel.Children.Add(Slider(Loc.T("color.minluma"), Math.Pow(_cfg.MinLuma / 0.3, 1.0 / 3.0), 0, 1, 0.005,
                 v => _cfg.MinLuma = Math.Pow(v, 3) * 0.3,
-                v => (Math.Pow(v, 3) * 0.3).ToString("0.0000")));
+                v => v <= 0 ? Loc.T("off") : (Math.Pow(v, 3) * 0.3).ToString("0.0000"),
+                Loc.T("color.minluma.note")));
 
             panel.Children.Add(Slider(Loc.T("color.shadow"), _cfg.ShadowNeutral, 0, 0.4, 0.01,
                 v => _cfg.ShadowNeutral = v,
                 v => v <= 0 ? Loc.T("off") : v.ToString("0.00"),
                 Loc.T("color.shadow.note")));
 
+            panel.Children.Add(Slider(Loc.T("color.backlight"), _cfg.MinBacklight, 0, 0.25, 0.005,
+                v => _cfg.MinBacklight = v,
+                v => v <= 0 ? Loc.T("off") : (v * 255).ToString("0"),
+                Loc.T("color.backlight.note")));
+        });
+
+        AddTab(Loc.T("tab.color"), "", panel =>
+        {
             panel.Children.Add(Slider(Loc.T("color.saturation"), _cfg.Saturation, 0, 2.5, 0.05, v => _cfg.Saturation = v));
             panel.Children.Add(Slider(Loc.T("color.gamma"), _cfg.Gamma, 1.0, 3.5, 0.05, v => _cfg.Gamma = v));
             panel.Children.Add(Slider(Loc.T("color.temperature"), _cfg.TemperatureK, 2000, 10000, 100, v => _cfg.TemperatureK = (int)v));
@@ -625,10 +682,10 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("color.dither"), _cfg.Dithering, v => _cfg.Dithering = v,
                 Loc.T("color.dither.note")));
 
-            panel.Children.Add(Slider(Loc.T("color.rise"), _cfg.SmoothingRise, 0.02, 1, 0.01, v => _cfg.SmoothingRise = v,
-                help: Loc.T("color.rise.note")));
-            panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01, v => _cfg.SmoothingFall = v,
-                help: Loc.T("color.fall.note")));
+            panel.Children.Add(Slider(Loc.T("color.rise"), _cfg.SmoothingRise, 0.02, 1, 0.01,
+                v => _cfg.SmoothingRise = v, help: Loc.T("color.rise.note")));
+            panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01,
+                v => _cfg.SmoothingFall = v, help: Loc.T("color.fall.note")));
         });
 
         AddTab(Loc.T("tab.capture"), "", panel =>
@@ -643,7 +700,7 @@ public partial class MainWindow : Window
             {
                 if (_rebuildingUi) return;
                 _cfg.CaptureMode = (CaptureMode)Math.Max(0, _modeBox.SelectedIndex);
-                _dirty = true;
+                MarkDirty();
                 _engine.RestartCapture();     // applies at once; the port is left alone
             };
             panel.Children.Add(Labeled(Loc.T("capture.method"), _modeBox, Loc.T("capture.method.note")));
@@ -679,6 +736,17 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("power.display"), _cfg.OffOnDisplayOff, v => _cfg.OffOnDisplayOff = v));
             panel.Children.Add(Check(Loc.T("power.lock"), _cfg.OffOnLock, v => _cfg.OffOnLock = v));
             panel.Children.Add(Check(Loc.T("power.suspend"), _cfg.OffOnSuspend, v => _cfg.OffOnSuspend = v));
+
+            var supply = Text(Loc.T("power.supply"));
+            supply.FontWeight = FontWeights.Bold;
+            supply.Margin = new Thickness(0, 14, 0, 6);
+            panel.Children.Add(supply);
+
+            // the travel depends on how many LEDs there are, so it is rebuilt with the
+            // count rather than only at startup - the same arrangement as the offset
+            _powerHost = new StackPanel();
+            panel.Children.Add(_powerHost);
+            RebuildPowerSlider();
         });
 
         AddTab(Loc.T("tab.about"), "", panel =>
@@ -696,6 +764,9 @@ public partial class MainWindow : Window
 
             panel.Children.Add(Note(Loc.T("about.text")));
             panel.Children.Add(Note(Loc.T("about.text2")));
+
+            panel.Children.Add(Check(Loc.T("about.updates"), _cfg.CheckUpdates,
+                v => _cfg.CheckUpdates = v));
 
             panel.Children.Add(LinkLine(Loc.T("about.repo"),
                 "https://github.com/Wa1den/Rimlight"));
@@ -748,6 +819,29 @@ public partial class MainWindow : Window
         _totalText.Text = string.Format(Loc.T("layout.total"), _cfg.TotalLeds);
         if (_countNote != null) _countNote.Text = string.Format(Loc.T("warn.count"), _cfg.TotalLeds);
         RebuildOffsetSlider();
+        RebuildPowerSlider();
+    }
+
+    /// <summary>
+    /// The ceiling is set in amperes, and how many amperes the strip can possibly draw is
+    /// the LED count times what one LED costs - so the whole travel of the slider moves
+    /// when the count does, and the top of it means "no ceiling" only because past that
+    /// figure there is nothing left to limit.
+    /// </summary>
+    void RebuildPowerSlider()
+    {
+        if (_powerHost == null) return;
+
+        double full = Math.Max(0.6, Math.Ceiling(_cfg.FullWhiteAmps * 10) / 10.0);
+        double value = _cfg.PowerLimitAmps <= 0 ? full : Math.Clamp(_cfg.PowerLimitAmps, 0.5, full);
+
+        _powerHost.Children.Clear();
+        _powerHost.Children.Add(Slider(Loc.T("color.power"), value, 0.5, full, 0.1,
+            v => _cfg.PowerLimitAmps = v >= full ? 0 : v,
+            v => v >= full
+                ? Loc.T("off")
+                : string.Format(Loc.T("color.power.value"), v, full),
+            string.Format(Loc.T("color.power.note"), _cfg.TotalLeds, _cfg.FullWhiteAmps)));
     }
 
     /// <summary>
@@ -809,10 +903,15 @@ public partial class MainWindow : Window
         _overlayButton.Content = Loc.T("layout.overlay.hide");
     }
 
+    /// <summary>
+    /// Compared against the last applied copy rather than latched, so putting a slider
+    /// back where it was takes the bar away again instead of leaving the user with a
+    /// change they cannot find.
+    /// </summary>
     void MarkDirty()
     {
         if (_rebuildingUi) return;
-        _dirty = true;
+        _dirty = !_cfg.SameSettingsAs(_saved);
     }
 
     void ApplyChanges()
@@ -925,6 +1024,89 @@ public partial class MainWindow : Window
             MessageBox.Show(Loc.T("dialog.loaded"));
         }
         catch (Exception ex) { MessageBox.Show(Loc.T("dialog.loadFail") + ex.Message); }
+    }
+
+    /// <summary>
+    /// Applied live like any other edit rather than written straight to disk: a reset is a
+    /// large change to look at, and the Cancel button has to be able to take it back.
+    /// </summary>
+    void ResetConfig()
+    {
+        if (MessageBox.Show(Loc.T("dialog.reset"), Loc.T("main.reset"),
+                            MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+            return;
+
+        _cfg.ResetToDefaults();
+
+        ProbeLog.Configure(RimlightConfig.LogPath, _cfg.WriteLog);
+        Autostart.Set(_cfg.Autostart);
+
+        BuildSettings();
+        ApplyPreviewLayout();
+        MarkDirty();
+
+        // the zones themselves are untouched, but the crop settings above them are not
+        _engine.RequestRelayout();
+    }
+
+    // ---- updates ------------------------------------------------------------
+
+    string? _updateUrl;
+
+    /// <summary>
+    /// Says once, on the way in, that a newer release exists. Silent otherwise - including
+    /// when the check itself failed, which is not news the user asked for.
+    ///
+    /// Started from the dispatcher and never configured away from it, so the continuation
+    /// after the request comes back on the UI thread and can touch the window directly.
+    /// </summary>
+    async System.Threading.Tasks.Task AnnounceUpdateAsync()
+    {
+        var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
+                      ?? new Version(1, 0, 0);
+
+        var found = await UpdateCheck.FindNewerAsync(current);
+        if (found == null) return;
+
+        _updateUrl = found.Value.Url;
+        string text = string.Format(Loc.T("update.available"), found.Value.Version.ToString(3));
+        ProbeLog.Log(Loc.P("обновление", "update"), text);
+
+        // With the tray in use the window may not be on screen at all, so the notice also
+        // has to leave the window. The card is shown either way: a toast that was missed
+        // leaves nothing behind, and the card is what the user comes back to.
+        if (_cfg.MinimizeToTray && _tray != null)
+        {
+            _tray.BalloonTipClicked -= OnUpdateBalloonClicked;
+            _tray.BalloonTipClicked += OnUpdateBalloonClicked;
+            _tray.ShowBalloonTip(10000, "Rimlight", text, System.Windows.Forms.ToolTipIcon.Info);
+        }
+
+        UpdateText.Inlines.Clear();
+        UpdateText.Inlines.Add(text + " ");
+
+        var link = new System.Windows.Documents.Hyperlink(
+            new System.Windows.Documents.Run(Loc.T("update.open")));
+        StyleLink(link);
+        link.Click += (_, _) => OpenUpdatePage();
+        UpdateText.Inlines.Add(link);
+
+        // the button's own font is the icon set, which has no letters in it - the popup
+        // inherits that font unless it is told otherwise, the same trap as HelpIcon
+        UpdateClose.ToolTip = new TextBlock
+        {
+            Text = Loc.T("update.hide"),
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 12
+        };
+        UpdateCard.Visibility = Visibility.Visible;
+    }
+
+    void OnUpdateBalloonClicked(object? sender, EventArgs e) => OpenUpdatePage();
+
+    void OpenUpdatePage()
+    {
+        if (_updateUrl != null) OpenUrl(_updateUrl);
     }
 
     // ---- preview ------------------------------------------------------------
@@ -1100,6 +1282,7 @@ public partial class MainWindow : Window
             _statLabels[5].Text = Loc.T("stats.latency") + ":";
             _statLabels[6].Text = Loc.T("stats.stages") + ":";
             _statLabels[7].Text = Loc.T("stats.sources") + ":";
+            _statLabels[8].Text = Loc.T("stats.current") + ":";
         }
 
         _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
@@ -1121,6 +1304,14 @@ public partial class MainWindow : Window
                                   $"; {Loc.T("stats.stage.relay")} {_engine.StageRelayMs:F1}" +
                                   $"; {Loc.T("stats.stage.out")} {_engine.StageOutMs:F1}";
             _statValues[7].Text = capLine;
+
+            // against the ceiling in the same line, because the only question this answers
+            // is whether the ceiling is doing anything
+            double amps = _cfg.TotalLeds * (RimlightConfig.AmpsPerLedIdle +
+                                            RimlightConfig.AmpsPerLedWhite * _engine.MeanDuty);
+            _statValues[8].Text = _cfg.PowerLimitAmps > 0
+                ? string.Format(Loc.T("stats.current.limited"), amps, _cfg.FullWhiteAmps, _cfg.PowerLimitAmps)
+                : string.Format(Loc.T("stats.current.free"), amps, _cfg.FullWhiteAmps);
         }
 
         // the toggle applies live; the block only exists while the preview column does

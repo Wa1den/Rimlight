@@ -121,6 +121,25 @@ public sealed class RimlightEngine : IDisposable
     public HybridBackend? Capture => _capture;
     public double OutputFps { get; private set; }
 
+    /// <summary>
+    /// Mean duty of the last frame that went out, 0..1 - the share of full white the strip
+    /// is actually showing.
+    ///
+    /// Measured on the buffer that reaches the port rather than inside the colour
+    /// pipeline, so everything applied after it counts too. That is what makes it
+    /// comparable with the current ceiling, which is the only reason it exists.
+    /// </summary>
+    public double MeanDuty { get; private set; }
+
+    void MeasureDuty()
+    {
+        if (_output.Length == 0) { MeanDuty = 0; return; }
+
+        long sum = 0;
+        foreach (var b in _output) sum += b;
+        MeanDuty = sum / (255.0 * _output.Length);
+    }
+
     /// <summary>Where the picture was last found inside the frame, for the settings panel.</summary>
     public CropRect Crop => _crop.Rect;
 
@@ -397,6 +416,7 @@ public sealed class RimlightEngine : IDisposable
                 lastMs = startMs;
                 _pipeline.Process(_sampled, _output, _cfg.ToColorSettings(), _zones.Length, dt <= 0 ? periodMs : dt);
                 NeutraliseShadows(_cfg.ShadowNeutral);
+                MeasureDuty();
 
                 // после обесцвечивания, чтобы превью показывало то же, что уходит на ленту
                 lock (_previewLock) Buffer.BlockCopy(_output, 0, _preview, 0, _output.Length);

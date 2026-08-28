@@ -90,14 +90,17 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 3. Точная подгонка выполняется ползунком **«Смещение»**: стартовый угол сам по себе не
    определяет положение первого диода — оно зависит ещё и от того, по какой стороне лента
    уходит из угла.
-4. **Цвет** — температура и усиления по каналам подбираются под цвет стены за монитором.
-   Ползунок **«Обесцвечивание тёмного»** убирает оттенок баланса белого с почти чёрных
-   участков кадра: без него чёрная полоса плеера при тёплом балансе светит тёмно-красным.
-5. **Кадрирование** — включает поиск чёрных полос, по умолчанию выключенный. Значения
+4. **Яркость** — общий предел яркости и три настройки тёмного конца кадра.
+   **«Порог темноты»** гасит зоны ниже заданного уровня, **«Обесцвечивание тёмного»**
+   убирает с них оттенок баланса белого — без него чёрная полоса плеера при тёплом
+   балансе светит тёмно-красным, — а **«Минимальная подсветка»** не даёт ленте гаснуть
+   на чёрном кадре.
+5. **Цвет** — температура и усиления по каналам подбираются под цвет стены за монитором.
+6. **Кадрирование** — включает поиск чёрных полос, по умолчанию выключенный. Значения
    рассчитаны на фильмы 2.35:1 и 21:9. Если полосы теряются при всплывающей панели плеера,
    увеличивается **«Пропускать помехи»**; если кадрирование срабатывает на тёмных сценах —
    **«Задержка подтверждения»** и **«Минимальная полоса»**.
-6. **Захват** — ползунок **«Максимум кадров в секунду»** задаёт, как часто кадр экрана
+7. **Захват** — ползунок **«Максимум кадров в секунду»** задаёт, как часто кадр экрана
    сводится к цветам зон и уходит на ленту. Кадр, пришедший раньше этого срока,
    отбрасывается, поэтому ограничение добавляет к задержке вывода до одного своего
    периода: замер камерой на 240 кадров в секунду даёт около 30 мс от смены цвета на
@@ -105,6 +108,16 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
    которое стоит по умолчанию. Без ограничения частота упирается в период контроллера —
    около 7 мс на 122 диода при 1 Мбод. Ограничение уменьшает число сводов кадра на
    видеокарте, так что на слабой карте или в тяжёлой игре оно может оказаться полезным.
+8. **Питание** — ползунок **«Предел тока»** ограничивает ток всей ленты. Срабатывает
+   только на светлых кадрах, поэтому на цветных сценах разницы обычно не видно.
+   Выставляется по блоку питания: 120 диодов WS2812 на полном белом берут около 7 А.
+
+Кнопка **«По умолчанию»** в разделе «Основное» возвращает настройки к стандартным, не
+трогая выбор монитора и порта, раскладку ленты, язык и положение окна.
+
+Галка **«Проверять обновления при запуске»** в разделе «О программе» по умолчанию
+выключена: это единственное обращение программы в сеть, и наружу уходит только номер
+текущей версии.
 
 Для проверки на настоящем кадре в `pics/Rainbow.jpg` лежит изображение с насыщенными
 цветами во всех частях кадра. Установленное фоном рабочего стола, оно показывает
@@ -300,15 +313,18 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
 3. Fine-tuning is done with the **Offset** slider: the start corner alone does not
    determine the position of the first LED — it also depends on which side the strip leaves
    the corner on.
-4. **Colour** — temperature and the per-channel gains are matched to the wall behind the
-   monitor. The **Shadow desaturation** slider removes the white balance tint from nearly
-   black parts of the frame: without it a black player bar lights the strip dark red under
-   a warm balance.
-5. **Cropping** — switches on the search for black bars, which is off by default. The
+4. **Brightness** — the overall brightness limit and three settings for the dark end of
+   the frame. **Darkness threshold** puts out zones below a given level, **Shadow
+   desaturation** removes the white balance tint from them - without it a black player bar
+   lights the strip dark red under a warm balance - and **Minimum backlight** keeps the
+   strip from going out on a black frame.
+5. **Colour** — temperature and the per-channel gains are matched to the wall behind the
+   monitor.
+6. **Cropping** — switches on the search for black bars, which is off by default. The
    values suit 2.35:1 and 21:9 films. If the bars are lost when the player controls appear,
    raise **Step over interference**; if the crop reacts to dark scenes, raise **Confirmation
    delay** and **Smallest bar**.
-6. **Capture** — the **Maximum frames per second** slider sets how often a screen frame
+7. **Capture** — the **Maximum frames per second** slider sets how often a screen frame
    is reduced to zone colours and sent to the strip. A frame arriving inside that window is
    dropped, so a limit adds up to one of its own periods to the output delay: measured with
    a camera at 240 fps, a change takes about 30 ms to reach the strip with the limit at 60
@@ -316,6 +332,17 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
    controller's own period instead - about 7 ms for 122 LEDs at 1 Mbaud. A limit cuts the
    number of frame reductions done on the graphics card, which can be worth having on a
    weak card or in a demanding game.
+8. **Power** — the **Current ceiling** slider caps the current the whole strip draws. It
+   only engages on bright frames, so coloured scenes usually show no difference. Set it by
+   the supply: 120 WS2812 at full white draw about 7 A.
+
+The **Defaults** button in the General section puts the settings back to their standard
+values, leaving the chosen monitor and port, the strip layout, the language and the window
+position alone.
+
+The **Check for updates at startup** box in the About section is off by default: it is the
+only request the program makes outside the machine, and the only thing sent out is the
+current version number.
 
 For a check against a real frame, `pics/Rainbow.jpg` is an image with saturated colours
 in every part of the frame. Set as the desktop background, it shows the whole layout at

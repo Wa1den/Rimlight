@@ -151,6 +151,10 @@ public partial class MainWindow : Window
             if (!_cfg.ShowPreview) ApplyPreviewLayout();
 
             if (_cfg.StartMinimized) WindowState = WindowState.Minimized;
+
+            // after the engine, and not awaited: a slow answer from GitHub must not hold
+            // up the strip lighting
+            if (_cfg.CheckUpdates) _ = AnnounceUpdateAsync();
         };
 
         // the overlay is shown without activation, so its own key handler only fires while
@@ -728,6 +732,9 @@ public partial class MainWindow : Window
             verText.Margin = new Thickness(0, 0, 0, 8);
             panel.Children.Add(verText);
 
+            panel.Children.Add(Check(Loc.T("about.updates"), _cfg.CheckUpdates,
+                v => _cfg.CheckUpdates = v, Loc.T("about.updates.note")));
+
             panel.Children.Add(Note(Loc.T("about.text")));
             panel.Children.Add(Note(Loc.T("about.text2")));
 
@@ -1005,6 +1012,58 @@ public partial class MainWindow : Window
 
         // the zones themselves are untouched, but the crop settings above them are not
         _engine.RequestRelayout();
+    }
+
+    // ---- updates ------------------------------------------------------------
+
+    string? _updateUrl;
+
+    /// <summary>
+    /// Says once, on the way in, that a newer release exists. Silent otherwise - including
+    /// when the check itself failed, which is not news the user asked for.
+    ///
+    /// Started from the dispatcher and never configured away from it, so the continuation
+    /// after the request comes back on the UI thread and can touch the window directly.
+    /// </summary>
+    async System.Threading.Tasks.Task AnnounceUpdateAsync()
+    {
+        var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
+                      ?? new Version(1, 0, 0);
+
+        var found = await UpdateCheck.FindNewerAsync(current);
+        if (found == null) return;
+
+        _updateUrl = found.Value.Url;
+        string text = string.Format(Loc.T("update.available"), found.Value.Version.ToString(3));
+        ProbeLog.Log(Loc.P("обновление", "update"), text);
+
+        // With the tray in use the window may not even be on screen, so the notice has to
+        // leave the window; without it there is nothing in the tray to speak from.
+        if (_cfg.MinimizeToTray && _tray != null)
+        {
+            _tray.BalloonTipClicked -= OnUpdateBalloonClicked;
+            _tray.BalloonTipClicked += OnUpdateBalloonClicked;
+            _tray.ShowBalloonTip(10000, "Rimlight", text, System.Windows.Forms.ToolTipIcon.Info);
+            return;
+        }
+
+        UpdateText.Inlines.Clear();
+        UpdateText.Inlines.Add(text + " ");
+
+        var link = new System.Windows.Documents.Hyperlink(
+            new System.Windows.Documents.Run(Loc.T("update.open")));
+        StyleLink(link);
+        link.Click += (_, _) => OpenUpdatePage();
+        UpdateText.Inlines.Add(link);
+
+        UpdateCard.Visibility = Visibility.Visible;
+    }
+
+    void OnUpdateBalloonClicked(object? sender, EventArgs e) => OpenUpdatePage();
+
+    void OpenUpdatePage()
+    {
+        if (_updateUrl != null) OpenUrl(_updateUrl);
     }
 
     // ---- preview ------------------------------------------------------------

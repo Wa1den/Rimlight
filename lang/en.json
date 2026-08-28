@@ -16,6 +16,10 @@
   "about.version": "Version {0}",
   "about.text": "Monitor bias lighting software: colours along the screen edges are averaged per zone and sent to an addressable LED strip over a serial port using the Adalight protocol.",
   "about.text2": "Screen capture uses Desktop Duplication, Windows Graphics Capture and GDI, switching automatically when the current method stops delivering frames. Frames can be shared with the case lighting module.",
+  "about.updates": "Check for updates",
+  "about.updates.note": "At startup the program asks GitHub whether a newer version has been released. It is the only request that leaves the machine, and the only thing sent out is the current version number. A new version is announced by a tray notification, or by a line at the bottom of the window when minimising to tray is off.",
+  "update.available": "Version {0} has been released.",
+  "update.open": "Open the release page",
   "about.repo": "Project repository:",
   "about.firmware": "Controller firmware and the original idea:",
   "main.stats": "Show statistics",
@@ -166,5 +170,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "27"
+  "_version": "28"
 }

@@ -300,6 +300,13 @@ public sealed class RimlightConfig
     public bool StartMinimized { get; set; }
     public bool Autostart { get; set; }
     public bool WriteLog { get; set; }
+
+    /// <summary>
+    /// Asks GitHub at startup whether a newer release exists. Off by default: it is the
+    /// only thing here that reaches outside the machine, and that is not a thing to start
+    /// doing without being asked.
+    /// </summary>
+    public bool CheckUpdates { get; set; }
     public string Language { get; set; } = "ru";
 
     // window geometry, so it comes back where it was left

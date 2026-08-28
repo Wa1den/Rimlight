@@ -119,6 +119,12 @@ public sealed class RimlightConfig
     public double CropHoldMs { get; set; } = 700;
 
     /// <summary>
+    /// Extra margin taken inside the picture once a bar is found, in percent of the side.
+    /// See <see cref="CropSettings.InsetPercent"/>.
+    /// </summary>
+    public double CropInsetPercent { get; set; } = 0.5;
+
+    /// <summary>
     /// Spreads the picture across the whole ring, so the LEDs behind a bar light from the
     /// nearest part of the picture rather than sitting dark. With this off the zones only
     /// slide clear of the bars and keep their positions otherwise.
@@ -134,7 +140,8 @@ public sealed class RimlightConfig
         MaxPercent = CropMaxPercent,
         BlackLevel = CropBlackLevel,
         OverlookPercent = CropOverlookPercent,
-        HoldMs = CropHoldMs
+        HoldMs = CropHoldMs,
+        InsetPercent = CropInsetPercent
     };
 
     // ---- colour -------------------------------------------------------------
@@ -157,6 +164,16 @@ public sealed class RimlightConfig
     /// </summary>
     public double ShadowNeutral { get; set; }
 
+    /// <summary>
+    /// Level the strip never drops below, 0..1. Zero switches it off.
+    ///
+    /// Works with <see cref="MinLuma"/> rather than against it: the cutoff decides what
+    /// counts as black, and this decides what black looks like. Only LEDs whose every
+    /// channel is under the level are lifted, so a dark scene that still has a colour in
+    /// it keeps that colour.
+    /// </summary>
+    public double MinBacklight { get; set; }
+
     public double Saturation { get; set; } = 1.0;         // 1 = untouched
     public double Gamma { get; set; } = 2.2;              // 2.2 = neutral round trip
     public int TemperatureK { get; set; } = 6500;         // 6500 = neutral
@@ -164,6 +181,55 @@ public sealed class RimlightConfig
     public double GainG { get; set; } = 1.0;
     public double GainB { get; set; } = 1.0;
     public bool Dithering { get; set; } = true;
+
+    /// <summary>
+    /// What the strip is allowed to draw, in amperes. Zero, the default, is no ceiling.
+    ///
+    /// Stated as a current rather than as a share of full brightness because that is what
+    /// the setting is actually about: the supply is a fixed number of amperes whatever the
+    /// strip is asked to show, and a share of full brightness would silently mean a
+    /// different current every time the LED count changed.
+    ///
+    /// Unlike <see cref="MaxBrightness"/> this only engages on frames that would really
+    /// cost that much, so an ordinary picture - where most of the strip is dim - is left
+    /// at full brightness.
+    /// </summary>
+    public double PowerLimitAmps { get; set; }
+
+    /// <summary>
+    /// What one LED draws at full white, in amperes. A WS2812 is three dice of about 20 mA
+    /// each; strips vary a little with the LED bin and the voltage that survives the run,
+    /// so this is a nameplate figure and not a measurement of any particular strip.
+    /// </summary>
+    public const double AmpsPerLedWhite = 0.060;
+
+    /// <summary>
+    /// What one LED draws showing nothing at all. The controller inside each package runs
+    /// whatever the colour is, and across a hundred-odd LEDs it adds up to a tenth of an
+    /// amp - small, but it is spent before any light is made, so the ceiling cannot hand
+    /// it out.
+    /// </summary>
+    public const double AmpsPerLedIdle = 0.001;
+
+    /// <summary>What the whole strip draws at full white, ceiling included.</summary>
+    [JsonIgnore]
+    public double FullWhiteAmps => TotalLeds * (AmpsPerLedWhite + AmpsPerLedIdle);
+
+    /// <summary>
+    /// The ceiling as the pipeline wants it: a share of full duty. One means no ceiling,
+    /// which is also what a setting at or above what the strip can draw comes to.
+    /// </summary>
+    [JsonIgnore]
+    public double PowerLimitFraction
+    {
+        get
+        {
+            if (PowerLimitAmps <= 0 || PowerLimitAmps >= FullWhiteAmps) return 1.0;
+
+            double forLight = PowerLimitAmps - TotalLeds * AmpsPerLedIdle;
+            return Math.Clamp(forLight / (TotalLeds * AmpsPerLedWhite), 0, 1);
+        }
+    }
 
     /// <summary>Asymmetric smoothing: light rises quickly, falls gently.</summary>
     public double SmoothingRise { get; set; } = 0.55;
@@ -184,6 +250,8 @@ public sealed class RimlightConfig
         GainG = GainG,
         GainB = GainB,
         Dithering = Dithering,
+        MinBacklight = MinBacklight,
+        PowerLimit = PowerLimitFraction,
         SmoothingRise = SmoothingRise,
         SmoothingFall = SmoothingFall
     };

@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "22";
+    const string Version = "26";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -242,6 +242,7 @@ public static class Loc
         ["tab.device"] = "Устройство",
         ["tab.layout"] = "Раскладка",
         ["tab.crop"] = "Кадрирование",
+        ["tab.brightness"] = "Яркость",
         ["tab.color"] = "Цвет",
         ["tab.capture"] = "Захват",
         ["tab.power"] = "Питание",
@@ -315,6 +316,8 @@ public static class Loc
         ["crop.overlook.note"] = "Запас на субтитры и панель плеера, которые рисуются поверх полосы. Больше — держится увереннее, слишком много — захватывает край картинки.",
         ["crop.hold"] = "Задержка подтверждения, с",
         ["crop.hold.note"] = "Новые границы применяются, только если продержались столько времени. Больше — устойчивее к тёмным сценам, меньше — быстрее отклик.",
+        ["crop.inset"] = "Запас от полосы, %",
+        ["crop.inset.note"] = "Насколько глубже в картинку уводится найденная граница. Поиск идёт по уменьшенному кадру, где один пиксель отвечает за десятки, и первая строка, прочитанная как картинка, наполовину состоит из полосы — выборка с неё занижает яркость всей стороны.",
         ["crop.status.off"] = "Поиск полос выключен.",
         ["crop.status.none"] = "Полосы не найдены.",
         ["crop.status.v"] = "Найдено: сверху и снизу {0:0.0}%.",
@@ -322,7 +325,11 @@ public static class Loc
         ["crop.status.both"] = "Найдено: сверху и снизу {0:0.0}%, слева и справа {1:0.0}%.",
 
         ["color.brightness"] = "Максимальная яркость",
+        ["color.brightness.note"] = "Верхний предел яркости, одинаковый для всех кадров. Уменьшают, когда подсветка слепит в тёмной комнате: тусклые кадры теряют яркость наравне с яркими.",
         ["color.minluma"] = "Порог темноты",
+        ["color.minluma.note"] = "Ниже этого уровня зона гаснет полностью. Убирает свечение от почти чёрных участков кадра — тёмной сцены, чёрной полосы плеера. Слишком высокий порог гасит и слабые, но настоящие цвета. При включённой минимальной подсветке погашенные зоны светятся ею.",
+        ["color.backlight"] = "Минимальная подсветка",
+        ["color.backlight.note"] = "Уровень, ниже которого лента не гаснет: на чёрном кадре она светит ровно и тускло вместо темноты. Диод, у которого хоть один канал ярче этого уровня, остаётся как есть, поэтому тёмные цветные сцены не выцветают. Разница между чёрным и почти чёрным пропадает.",
         ["color.shadow"] = "Обесцвечивание тёмного",
         ["color.shadow.note"] = "Баланс белого применяется одинаково ко всем уровням, поэтому на почти чёрном участке экрана от кадра остаётся только оттенок: чёрная полоса плеера с белыми цифрами при тёплом балансе светит тёмно-красным. Чем ниже яркость, тем сильнее цвет сводится к серому. Ноль отключает.",
         ["color.saturation"] = "Насыщенность",
@@ -337,6 +344,9 @@ public static class Loc
         ["color.rise.note"] = "Доля пути до нового, более яркого цвета, проходимая за кадр. Меньшие значения дают более плавные переходы, но увеличивают запаздывание.",
         ["color.fall"] = "Сглаживание: спад",
         ["color.fall.note"] = "То же при уменьшении яркости. Спад обычно делается медленнее подъёма, чтобы яркость снижалась плавно и не было мерцания на тёмных сценах.",
+        ["color.power"] = "Предел тока",
+        ["color.power.value"] = "{0:0.0} А из {1:0.0}",
+        ["color.power.note"] = "Потолок тока для всей ленты. Срабатывает только на светлых кадрах, поэтому на цветных сценах разницы обычно не видно. Ставится по блоку питания: {0} диодов берут до {1:0.0} А.",
 
         ["capture.method"] = "Метод захвата",
         ["capture.auto"] = "Авто",
@@ -353,6 +363,7 @@ public static class Loc
         ["capture.publish.note"] = "Кадры помещаются в разделяемую память для модуля подсветки корпуса (CaseLight), которому тогда не нужен собственный захват экрана. Если модуль не запущен, копирование бесполезно, поэтому по умолчанию выключено.",
 
         ["power.head"] = "Выключать подсветку при:",
+        ["power.supply"] = "Питание ленты",
         ["power.exit"] = "выходе из программы",
         ["power.display"] = "выключении экрана",
         ["power.lock"] = "блокировке компьютера",
@@ -375,6 +386,9 @@ public static class Loc
         ["stats.drop.queue"] = "очередь",
         ["stats.drop.rate"] = "темп",
         ["stats.sources"] = "источники",
+        ["stats.current"] = "ток",
+        ["stats.current.free"] = "{0:0.0} А из {1:0.0}",
+        ["stats.current.limited"] = "{0:0.0} А из {1:0.0}; предел {2:0.0}",
         ["stats.sent"] = "отправлено",
         ["stats.skipped"] = "пропущено одинаковых",
         ["stats.reconnects"] = "переподключений",
@@ -406,6 +420,7 @@ public static class Loc
         ["tab.device"] = "Device",
         ["tab.layout"] = "Layout",
         ["tab.crop"] = "Cropping",
+        ["tab.brightness"] = "Brightness",
         ["tab.color"] = "Colour",
         ["tab.capture"] = "Capture",
         ["tab.power"] = "Power",
@@ -479,6 +494,8 @@ public static class Loc
         ["crop.overlook.note"] = "Margin for subtitles and player controls, which are drawn over the bar. Higher holds more reliably, too high takes in the edge of the picture.",
         ["crop.hold"] = "Confirmation delay, s",
         ["crop.hold.note"] = "New edges are acted on only once they have held for this long. Higher stands up to dark scenes better, lower responds sooner.",
+        ["crop.inset"] = "Margin past the bar, %",
+        ["crop.inset.note"] = "How much further into the picture the detected edge is moved. The scan runs on the reduced frame, where one pixel stands for dozens, so the first row read as picture is half bar - sampling from it drags the whole side down.",
         ["crop.status.off"] = "Bar detection off.",
         ["crop.status.none"] = "No bars found.",
         ["crop.status.v"] = "Found: {0:0.0}% top and bottom.",
@@ -486,7 +503,11 @@ public static class Loc
         ["crop.status.both"] = "Found: {0:0.0}% top and bottom, {1:0.0}% left and right.",
 
         ["color.brightness"] = "Maximum brightness",
+        ["color.brightness.note"] = "Upper limit on brightness, the same for every frame. Lowered when the light is too much for a dark room: dim frames lose as much as bright ones.",
         ["color.minluma"] = "Darkness threshold",
+        ["color.minluma.note"] = "Below this level a zone goes out completely. Removes the glow from nearly black parts of the picture - a dark scene, the black bar of a player. Set too high it also puts out faint but genuine colours. With a minimum backlight set, the zones it puts out glow at that level.",
+        ["color.backlight"] = "Minimum backlight",
+        ["color.backlight.note"] = "The level the strip never drops below: on a black frame it glows evenly and dimly instead of going dark. An LED with any channel brighter than this level is left alone, so dark coloured scenes do not wash out. The difference between black and nearly black is lost.",
         ["color.shadow"] = "Shadow desaturation",
         ["color.shadow.note"] = "White balance applies the same tint at every level, so in a nearly black part of the frame that tint is all that reaches the strip: a black player bar with white digits lights it dark red under a warm balance. The lower the brightness, the further the colour is pulled towards grey. Zero switches it off.",
         ["color.saturation"] = "Saturation",
@@ -501,6 +522,9 @@ public static class Loc
         ["color.rise.note"] = "The share of the way towards a new, brighter colour covered per frame. Lower values give smoother transitions but increase the lag.",
         ["color.fall"] = "Smoothing: fall",
         ["color.fall.note"] = "The same for decreasing brightness. Fall is usually slower than rise so brightness drops gradually without flicker in dark scenes.",
+        ["color.power"] = "Current ceiling",
+        ["color.power.value"] = "{0:0.0} A of {1:0.0}",
+        ["color.power.note"] = "Ceiling on the current the whole strip draws. It only engages on bright frames, so coloured scenes usually show no difference. Set it by the supply: {0} LEDs draw up to {1:0.0} A.",
 
         ["capture.method"] = "Capture method",
         ["capture.auto"] = "Auto",
@@ -517,6 +541,7 @@ public static class Loc
         ["capture.publish.note"] = "Frames are placed in shared memory for the case lighting module (CaseLight), which then needs no screen capture of its own. With the module not running the copy is useless, so this is off by default.",
 
         ["power.head"] = "Turn the strip off on:",
+        ["power.supply"] = "Strip supply",
         ["power.exit"] = "application exit",
         ["power.display"] = "display off",
         ["power.lock"] = "workstation lock",
@@ -539,6 +564,9 @@ public static class Loc
         ["stats.drop.queue"] = "queue",
         ["stats.drop.rate"] = "rate",
         ["stats.sources"] = "sources",
+        ["stats.current"] = "current",
+        ["stats.current.free"] = "{0:0.0} A of {1:0.0}",
+        ["stats.current.limited"] = "{0:0.0} A of {1:0.0}; ceiling {2:0.0}",
         ["stats.sent"] = "sent",
         ["stats.skipped"] = "identical skipped",
         ["stats.reconnects"] = "reconnects",

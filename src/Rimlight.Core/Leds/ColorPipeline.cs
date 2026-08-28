@@ -8,12 +8,21 @@ namespace Rimlight.Leds;
 /// Everything up to the final encode happens in linear light, which is where scaling,
 /// white balance and blending are actually meaningful. Prismatik does this arithmetic on
 /// gamma-encoded values, which is why its output dims oddly on high-contrast scenes.
+///
+/// The frame is walked twice: once to work out what each channel wants, and once to put
+/// bytes on the wire. Splitting them is what lets the power ceiling see the whole strip
+/// before anything is committed - a limit that has to be applied per LED is not a limit on
+/// the strip at all.
 /// </summary>
 public sealed class ColorPipeline
 {
     double[] _smoothR = Array.Empty<double>();
     double[] _smoothG = Array.Empty<double>();
     double[] _smoothB = Array.Empty<double>();
+
+    /// <summary>Gamma-encoded 0..255 values for the frame being built, before quantising.</summary>
+    double[] _encoded = Array.Empty<double>();
+
     bool _primed;
 
     public void Reset(int ledCount)
@@ -21,6 +30,7 @@ public sealed class ColorPipeline
         _smoothR = new double[ledCount];
         _smoothG = new double[ledCount];
         _smoothB = new double[ledCount];
+        _encoded = new double[ledCount * 3];
         _primed = false;
     }
 
@@ -70,9 +80,6 @@ public sealed class ColorPipeline
     {
         if (_smoothR.Length != ledCount) Reset(ledCount);
 
-        // dithering error travels along the strip, not through time - see Encode
-        double errR = 0, errG = 0, errB = 0;
-
         var (tr, tg, tb) = TemperatureGains(cfg.TemperatureK);
         double gr = tr * cfg.GainR, gg = tg * cfg.GainG, gb = tb * cfg.GainB;
         double invGamma = 1.0 / Math.Max(0.1, cfg.Gamma);
@@ -120,12 +127,82 @@ public sealed class ColorPipeline
                 _smoothB[i] = Blend(_smoothB[i], b, cfg, step);
             }
 
-            outRgb[o] = Encode(_smoothR[i], invGamma, ref errR, cfg.Dithering);
-            outRgb[o + 1] = Encode(_smoothG[i], invGamma, ref errG, cfg.Dithering);
-            outRgb[o + 2] = Encode(_smoothB[i], invGamma, ref errB, cfg.Dithering);
+            _encoded[o] = GammaEncode(_smoothR[i], invGamma);
+            _encoded[o + 1] = GammaEncode(_smoothG[i], invGamma);
+            _encoded[o + 2] = GammaEncode(_smoothB[i], invGamma);
         }
 
         _primed = true;
+
+        // Floor first, ceiling second. The supply is a hard limit and a minimum glow is a
+        // preference, so where the two disagree the ceiling has the last word.
+        ApplyMinBacklight(_encoded, ledCount * 3, cfg.MinBacklight);
+        ApplyPowerLimit(_encoded, ledCount * 3, cfg.PowerLimit);
+
+        // dithering error travels along the strip, not through time - see Quantise
+        double errR = 0, errG = 0, errB = 0;
+
+        for (int i = 0; i < ledCount; i++)
+        {
+            int o = i * 3;
+            outRgb[o] = Quantise(_encoded[o], ref errR, cfg.Dithering);
+            outRgb[o + 1] = Quantise(_encoded[o + 1], ref errG, cfg.Dithering);
+            outRgb[o + 2] = Quantise(_encoded[o + 2], ref errB, cfg.Dithering);
+        }
+    }
+
+    /// <summary>
+    /// Lifts a nearly black LED up to the floor, so a black picture leaves the strip
+    /// glowing instead of dark.
+    ///
+    /// The lift is one amount added to all three channels of the LED, worked out from its
+    /// brightest channel. Flooring each channel on its own instead would reach into every
+    /// dark colour on screen and raise its weak channels towards its strong one, which
+    /// takes the colour out of exactly the scenes that have least of it to spare. Adding
+    /// the same amount to all three leaves an LED alone the moment any channel of it
+    /// clears the floor, and keeps the distances between the channels while it does not.
+    ///
+    /// Additive rather than a multiplier for the same reason the floor is a floor: scaling
+    /// a nearly black colour up to a set level multiplies whatever noise is in it by the
+    /// same factor.
+    /// </summary>
+    static void ApplyMinBacklight(double[] encoded, int count, double level)
+    {
+        if (level <= 0) return;
+
+        double floor = Math.Clamp(level, 0, 1) * 255.0;
+
+        for (int j = 0; j + 2 < count; j += 3)
+        {
+            double top = Math.Max(encoded[j], Math.Max(encoded[j + 1], encoded[j + 2]));
+            if (top >= floor) continue;
+
+            double lift = floor - top;
+            encoded[j] += lift;
+            encoded[j + 1] += lift;
+            encoded[j + 2] += lift;
+        }
+    }
+
+    /// <summary>
+    /// Scales the whole frame down until its mean duty fits under the ceiling.
+    ///
+    /// Duty is what the strip draws current for, and duty is the encoded value - so this
+    /// belongs after the gamma encode and not before it. One factor for every channel of
+    /// every LED, so the picture keeps its colours and only loses brightness.
+    /// </summary>
+    static void ApplyPowerLimit(double[] encoded, int count, double limit)
+    {
+        if (limit >= 1.0 || count <= 0) return;
+
+        double total = 0;
+        for (int j = 0; j < count; j++) total += encoded[j];
+
+        double allowed = count * 255.0 * Math.Max(0, limit);
+        if (total <= allowed || total <= 0) return;
+
+        double scale = allowed / total;
+        for (int j = 0; j < count; j++) encoded[j] *= scale;
     }
 
     /// <summary>Rises fast, falls slowly - matches how the eye reads ambient light.</summary>
@@ -136,17 +213,21 @@ public sealed class ColorPipeline
         return current + (target - current) * a;
     }
 
+    /// <summary>Linear light to the 0..255 scale the strip is driven on.</summary>
+    static double GammaEncode(double linear, double invGamma) =>
+        Math.Pow(Math.Clamp(linear, 0, 1), invGamma) * 255.0;
+
     /// <summary>
-    /// Encodes to 8 bit, passing the rounding error to the NEXT LED along the strip.
+    /// Rounds to 8 bit, passing the rounding error to the NEXT LED along the strip.
     ///
     /// Carrying it through time instead makes each LED alternate between adjacent levels,
     /// and near the bottom of the range 1 versus 2 is a doubling of brightness - clearly
     /// visible as flicker. Spreading the error spatially smooths the same banding with no
     /// temporal component at all.
     /// </summary>
-    static byte Encode(double linear, double invGamma, ref double error, bool dither)
+    static byte Quantise(double value, ref double error, bool dither)
     {
-        double v = Math.Pow(Math.Clamp(linear, 0, 1), invGamma) * 255.0;
+        double v = Math.Clamp(value, 0, 255);
 
         if (!dither)
         {

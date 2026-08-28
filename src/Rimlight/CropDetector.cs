@@ -30,6 +30,17 @@ public readonly record struct CropSettings
     /// <summary>How long a new set of bars has to hold before it is acted on.</summary>
     public double HoldMs { get; init; } = 700;
 
+    /// <summary>
+    /// How much further inside the picture the boundary is moved once a bar is found.
+    /// Percent of the side.
+    ///
+    /// The scan runs on the reduced frame, where one pixel stands for dozens, and the
+    /// reduction averages across the edge of the bar - so the first row that reads as
+    /// picture is part bar. Sampling from it drags the whole side towards black. A little
+    /// off the top costs nothing, because the row it gives up is half black anyway.
+    /// </summary>
+    public double InsetPercent { get; init; } = 0.5;
+
     public CropSettings() { }
 }
 
@@ -180,7 +191,7 @@ public sealed class CropDetector
     {
         double f = bar / (double)side;
         if (f * 100.0 < s.MinPercent) return 0;
-        return Math.Min(f, s.MaxPercent / 100.0);
+        return Math.Min(f + Math.Max(0, s.InsetPercent) / 100.0, s.MaxPercent / 100.0);
     }
 
     static int Portion(double percent, int side) =>

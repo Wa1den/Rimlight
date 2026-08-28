@@ -29,8 +29,8 @@ public partial class MainWindow : Window
 
     readonly List<UIElement> _pages = new();
 
-    readonly TextBlock[] _statLabels = new TextBlock[8];
-    readonly TextBlock[] _statValues = new TextBlock[8];
+    readonly TextBlock[] _statLabels = new TextBlock[9];
+    readonly TextBlock[] _statValues = new TextBlock[9];
 
     /// <summary>Window width to come back to when the preview is switched on again.</summary>
     double _wideWidth;
@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     ComboBox _monitorBox = null!, _portBox = null!, _cornerBox = null!, _modeBox = null!, _langBox = null!;
     TextBlock _totalText = null!;
     StackPanel _offsetHost = null!;
+    StackPanel _powerHost = null!;
     TextBlock _countNote = null!;
     TextBlock _cropStatus = null!;
     LayoutOverlay? _overlay;
@@ -596,25 +597,43 @@ public partial class MainWindow : Window
                 v => _cfg.CropOverlookPercent = v, v => v.ToString("0.#"), Loc.T("crop.overlook.note")));
             Tune(Slider(Loc.T("crop.hold"), _cfg.CropHoldMs / 1000.0, 0.1, 3.0, 0.05,
                 v => _cfg.CropHoldMs = v * 1000.0, v => v.ToString("0.00"), Loc.T("crop.hold.note")));
+            Tune(Slider(Loc.T("crop.inset"), _cfg.CropInsetPercent, 0, 3, 0.1,
+                v => _cfg.CropInsetPercent = v,
+                v => v <= 0 ? Loc.T("off") : v.ToString("0.0"), Loc.T("crop.inset.note")));
 
             foreach (var e in tuning) e.IsEnabled = _cfg.AdaptiveCrop;
         });
 
-        AddTab(Loc.T("tab.color"), "", panel =>
+        // Brightness is kept apart from colour: how much light the strip makes is a
+        // different question from what colour it makes, and these are the settings reached
+        // for when the room is dark rather than when the wall is the wrong shade. The keys
+        // keep their "color." prefix - renaming them would silently drop the matching
+        // lines out of anyone's own translation file.
+        AddTab(Loc.T("tab.brightness"), "", panel =>
         {
-            panel.Children.Add(Slider(Loc.T("color.brightness"), _cfg.MaxBrightness, 0, 1, 0.01, v => _cfg.MaxBrightness = v));
+            panel.Children.Add(Slider(Loc.T("color.brightness"), _cfg.MaxBrightness, 0, 1, 0.01,
+                v => _cfg.MaxBrightness = v, help: Loc.T("color.brightness.note")));
 
             // cubic response: the useful range is the bottom few percent, and a linear
             // slider spends nearly all its travel on values that just black the strip out
             panel.Children.Add(Slider(Loc.T("color.minluma"), Math.Pow(_cfg.MinLuma / 0.3, 1.0 / 3.0), 0, 1, 0.005,
                 v => _cfg.MinLuma = Math.Pow(v, 3) * 0.3,
-                v => (Math.Pow(v, 3) * 0.3).ToString("0.0000")));
+                v => v <= 0 ? Loc.T("off") : (Math.Pow(v, 3) * 0.3).ToString("0.0000"),
+                Loc.T("color.minluma.note")));
 
             panel.Children.Add(Slider(Loc.T("color.shadow"), _cfg.ShadowNeutral, 0, 0.4, 0.01,
                 v => _cfg.ShadowNeutral = v,
                 v => v <= 0 ? Loc.T("off") : v.ToString("0.00"),
                 Loc.T("color.shadow.note")));
 
+            panel.Children.Add(Slider(Loc.T("color.backlight"), _cfg.MinBacklight, 0, 0.25, 0.005,
+                v => _cfg.MinBacklight = v,
+                v => v <= 0 ? Loc.T("off") : (v * 255).ToString("0"),
+                Loc.T("color.backlight.note")));
+        });
+
+        AddTab(Loc.T("tab.color"), "", panel =>
+        {
             panel.Children.Add(Slider(Loc.T("color.saturation"), _cfg.Saturation, 0, 2.5, 0.05, v => _cfg.Saturation = v));
             panel.Children.Add(Slider(Loc.T("color.gamma"), _cfg.Gamma, 1.0, 3.5, 0.05, v => _cfg.Gamma = v));
             panel.Children.Add(Slider(Loc.T("color.temperature"), _cfg.TemperatureK, 2000, 10000, 100, v => _cfg.TemperatureK = (int)v));
@@ -625,10 +644,10 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("color.dither"), _cfg.Dithering, v => _cfg.Dithering = v,
                 Loc.T("color.dither.note")));
 
-            panel.Children.Add(Slider(Loc.T("color.rise"), _cfg.SmoothingRise, 0.02, 1, 0.01, v => _cfg.SmoothingRise = v,
-                help: Loc.T("color.rise.note")));
-            panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01, v => _cfg.SmoothingFall = v,
-                help: Loc.T("color.fall.note")));
+            panel.Children.Add(Slider(Loc.T("color.rise"), _cfg.SmoothingRise, 0.02, 1, 0.01,
+                v => _cfg.SmoothingRise = v, help: Loc.T("color.rise.note")));
+            panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01,
+                v => _cfg.SmoothingFall = v, help: Loc.T("color.fall.note")));
         });
 
         AddTab(Loc.T("tab.capture"), "", panel =>
@@ -679,6 +698,17 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("power.display"), _cfg.OffOnDisplayOff, v => _cfg.OffOnDisplayOff = v));
             panel.Children.Add(Check(Loc.T("power.lock"), _cfg.OffOnLock, v => _cfg.OffOnLock = v));
             panel.Children.Add(Check(Loc.T("power.suspend"), _cfg.OffOnSuspend, v => _cfg.OffOnSuspend = v));
+
+            var supply = Text(Loc.T("power.supply"));
+            supply.FontWeight = FontWeights.Bold;
+            supply.Margin = new Thickness(0, 14, 0, 6);
+            panel.Children.Add(supply);
+
+            // the travel depends on how many LEDs there are, so it is rebuilt with the
+            // count rather than only at startup - the same arrangement as the offset
+            _powerHost = new StackPanel();
+            panel.Children.Add(_powerHost);
+            RebuildPowerSlider();
         });
 
         AddTab(Loc.T("tab.about"), "", panel =>
@@ -748,6 +778,29 @@ public partial class MainWindow : Window
         _totalText.Text = string.Format(Loc.T("layout.total"), _cfg.TotalLeds);
         if (_countNote != null) _countNote.Text = string.Format(Loc.T("warn.count"), _cfg.TotalLeds);
         RebuildOffsetSlider();
+        RebuildPowerSlider();
+    }
+
+    /// <summary>
+    /// The ceiling is set in amperes, and how many amperes the strip can possibly draw is
+    /// the LED count times what one LED costs - so the whole travel of the slider moves
+    /// when the count does, and the top of it means "no ceiling" only because past that
+    /// figure there is nothing left to limit.
+    /// </summary>
+    void RebuildPowerSlider()
+    {
+        if (_powerHost == null) return;
+
+        double full = Math.Max(0.6, Math.Ceiling(_cfg.FullWhiteAmps * 10) / 10.0);
+        double value = _cfg.PowerLimitAmps <= 0 ? full : Math.Clamp(_cfg.PowerLimitAmps, 0.5, full);
+
+        _powerHost.Children.Clear();
+        _powerHost.Children.Add(Slider(Loc.T("color.power"), value, 0.5, full, 0.1,
+            v => _cfg.PowerLimitAmps = v >= full ? 0 : v,
+            v => v >= full
+                ? Loc.T("off")
+                : string.Format(Loc.T("color.power.value"), v, full),
+            string.Format(Loc.T("color.power.note"), _cfg.TotalLeds, _cfg.FullWhiteAmps)));
     }
 
     /// <summary>
@@ -1100,6 +1153,7 @@ public partial class MainWindow : Window
             _statLabels[5].Text = Loc.T("stats.latency") + ":";
             _statLabels[6].Text = Loc.T("stats.stages") + ":";
             _statLabels[7].Text = Loc.T("stats.sources") + ":";
+            _statLabels[8].Text = Loc.T("stats.current") + ":";
         }
 
         _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
@@ -1121,6 +1175,14 @@ public partial class MainWindow : Window
                                   $"; {Loc.T("stats.stage.relay")} {_engine.StageRelayMs:F1}" +
                                   $"; {Loc.T("stats.stage.out")} {_engine.StageOutMs:F1}";
             _statValues[7].Text = capLine;
+
+            // against the ceiling in the same line, because the only question this answers
+            // is whether the ceiling is doing anything
+            double amps = _cfg.TotalLeds * (RimlightConfig.AmpsPerLedIdle +
+                                            RimlightConfig.AmpsPerLedWhite * _engine.MeanDuty);
+            _statValues[8].Text = _cfg.PowerLimitAmps > 0
+                ? string.Format(Loc.T("stats.current.limited"), amps, _cfg.FullWhiteAmps, _cfg.PowerLimitAmps)
+                : string.Format(Loc.T("stats.current.free"), amps, _cfg.FullWhiteAmps);
         }
 
         // the toggle applies live; the block only exists while the preview column does

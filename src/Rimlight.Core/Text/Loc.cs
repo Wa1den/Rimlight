@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "28";
+    const string Version = "29";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -255,10 +255,10 @@ public static class Loc
         ["about.version"] = "Версия {0}",
         ["about.text"] = "Программа фоновой подсветки монитора: цвета по краям экрана усредняются по зонам и отправляются на адресную светодиодную ленту через COM-порт по протоколу Adalight.",
         ["about.text2"] = "Захват экрана выполняется методами Desktop Duplication, Windows Graphics Capture и GDI с автоматическим переключением, если текущий метод перестаёт выдавать кадры. Кадры могут передаваться модулю подсветки корпуса.",
-        ["about.updates"] = "Проверять обновления",
-        ["about.updates.note"] = "При запуске программа спрашивает у GitHub, вышла ли версия новее. Это единственное обращение в сеть, и наружу уходит только номер текущей версии. О новой версии сообщает уведомление в трее, а при выключенном сворачивании в трей — строка внизу окна.",
+        ["about.updates"] = "Проверять обновления при запуске",
         ["update.available"] = "Вышла версия {0}.",
         ["update.open"] = "Открыть страницу релиза",
+        ["update.hide"] = "Скрыть до следующего запуска",
         ["about.repo"] = "Репозиторий проекта:",
         ["about.firmware"] = "Прошивка контроллера и исходная задумка:",
         ["main.stats"] = "Отображать статистику",
@@ -440,10 +440,10 @@ public static class Loc
         ["about.version"] = "Version {0}",
         ["about.text"] = "Monitor bias lighting software: colours along the screen edges are averaged per zone and sent to an addressable LED strip over a serial port using the Adalight protocol.",
         ["about.text2"] = "Screen capture uses Desktop Duplication, Windows Graphics Capture and GDI, switching automatically when the current method stops delivering frames. Frames can be shared with the case lighting module.",
-        ["about.updates"] = "Check for updates",
-        ["about.updates.note"] = "At startup the program asks GitHub whether a newer version has been released. It is the only request that leaves the machine, and the only thing sent out is the current version number. A new version is announced by a tray notification, or by a line at the bottom of the window when minimising to tray is off.",
+        ["about.updates"] = "Check for updates at startup",
         ["update.available"] = "Version {0} has been released.",
         ["update.open"] = "Open the release page",
+        ["update.hide"] = "Hide until the next start",
         ["about.repo"] = "Project repository:",
         ["about.firmware"] = "Controller firmware and the original idea:",
         ["main.stats"] = "Show statistics",

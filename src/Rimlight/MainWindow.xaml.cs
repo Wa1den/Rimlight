@@ -174,6 +174,10 @@ public partial class MainWindow : Window
                 Hide();
         };
 
+        // hidden for this session only - nothing is written down, so the next start says
+        // it again if the release is still newer
+        UpdateClose.Click += (_, _) => UpdateCard.Visibility = Visibility.Collapsed;
+
         _ui.Tick += (_, _) => RefreshUi();
         _ui.Start();
 
@@ -732,11 +736,11 @@ public partial class MainWindow : Window
             verText.Margin = new Thickness(0, 0, 0, 8);
             panel.Children.Add(verText);
 
-            panel.Children.Add(Check(Loc.T("about.updates"), _cfg.CheckUpdates,
-                v => _cfg.CheckUpdates = v, Loc.T("about.updates.note")));
-
             panel.Children.Add(Note(Loc.T("about.text")));
             panel.Children.Add(Note(Loc.T("about.text2")));
+
+            panel.Children.Add(Check(Loc.T("about.updates"), _cfg.CheckUpdates,
+                v => _cfg.CheckUpdates = v));
 
             panel.Children.Add(LinkLine(Loc.T("about.repo"),
                 "https://github.com/Wa1den/Rimlight"));
@@ -1037,14 +1041,14 @@ public partial class MainWindow : Window
         string text = string.Format(Loc.T("update.available"), found.Value.Version.ToString(3));
         ProbeLog.Log(Loc.P("обновление", "update"), text);
 
-        // With the tray in use the window may not even be on screen, so the notice has to
-        // leave the window; without it there is nothing in the tray to speak from.
+        // With the tray in use the window may not be on screen at all, so the notice also
+        // has to leave the window. The card is shown either way: a toast that was missed
+        // leaves nothing behind, and the card is what the user comes back to.
         if (_cfg.MinimizeToTray && _tray != null)
         {
             _tray.BalloonTipClicked -= OnUpdateBalloonClicked;
             _tray.BalloonTipClicked += OnUpdateBalloonClicked;
             _tray.ShowBalloonTip(10000, "Rimlight", text, System.Windows.Forms.ToolTipIcon.Info);
-            return;
         }
 
         UpdateText.Inlines.Clear();
@@ -1056,6 +1060,14 @@ public partial class MainWindow : Window
         link.Click += (_, _) => OpenUpdatePage();
         UpdateText.Inlines.Add(link);
 
+        // the button's own font is the icon set, which has no letters in it - the popup
+        // inherits that font unless it is told otherwise, the same trap as HelpIcon
+        UpdateClose.ToolTip = new TextBlock
+        {
+            Text = Loc.T("update.hide"),
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 12
+        };
         UpdateCard.Visibility = Visibility.Visible;
     }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO.Ports;
 using System.Threading;
@@ -22,6 +22,17 @@ public sealed class AdalightDevice : IDisposable
     const int BootloaderWaitMs = 2500;
 
     SerialPort? _port;
+
+    /// <summary>
+    /// Serialises everything that touches the port.
+    ///
+    /// The blackout is taken on the SystemEvents thread while the output thread is midway
+    /// through a frame, and both build their bytes in <see cref="_frame"/>. Without this
+    /// the two writes interleave into one corrupt frame, and the colour frame that lands
+    /// after the black one leaves the strip lit.
+    /// </summary>
+    readonly object _io = new();
+
     byte[] _frame = Array.Empty<byte>();
     byte[] _lastSent = Array.Empty<byte>();
     int _ledCount;
@@ -124,6 +135,11 @@ public sealed class AdalightDevice : IDisposable
     /// </param>
     public bool Open(string portName, int baud, int ledCount, bool waitBootloader = true)
     {
+        lock (_io) return OpenCore(portName, baud, ledCount, waitBootloader);
+    }
+
+    bool OpenCore(string portName, int baud, int ledCount, bool waitBootloader)
+    {
         Close();
         _ledCount = ledCount;
 
@@ -197,10 +213,15 @@ public sealed class AdalightDevice : IDisposable
     /// of silence, so a keepalive resend is required, not a nicety.
     /// </param>
     /// <param name="force">
-    /// Ignores both pacing guards. Blacking out the strip happens once, on the way out,
-    /// and must not be the frame that gets dropped.
+    /// Ignores both pacing guards. For the blackout, which waits the controller out
+    /// itself and must not then be refused for a queue that is about to be closed anyway.
     /// </param>
     public bool Send(byte[] rgb, bool onlyOnChange, int keepAliveMs, bool force = false)
+    {
+        lock (_io) return SendCore(rgb, onlyOnChange, keepAliveMs, force);
+    }
+
+    bool SendCore(byte[] rgb, bool onlyOnChange, int keepAliveMs, bool force)
     {
         if (_port is not { IsOpen: true }) return false;
 
@@ -276,12 +297,79 @@ public sealed class AdalightDevice : IDisposable
         return true;
     }
 
-    /// <summary>Sends one all-black frame, used on exit, lock, sleep and display off.</summary>
+    /// <summary>
+    /// Darkens the strip and waits for the frame to leave the port, used on exit, lock,
+    /// sleep and display off.
+    /// </summary>
     public void Blackout()
     {
-        if (_port is not { IsOpen: true }) return;
-        var black = new byte[_ledCount * 3];
-        Send(black, onlyOnChange: false, keepAliveMs: 0, force: true);
+        lock (_io)
+        {
+            if (_port is not { IsOpen: true }) return;
+
+            var black = new byte[_ledCount * 3];
+            for (int i = 0; i < BlackoutRepeats; i++)
+            {
+                WaitForController();
+                if (!SendCore(black, onlyOnChange: false, keepAliveMs: 0, force: true)) return;
+            }
+
+            Drain();
+        }
+    }
+
+    /// <summary>
+    /// How many times the black frame is repeated, a controller cycle apart.
+    ///
+    /// The blackout used to go out with both pacing guards off, which put it inside the
+    /// 3.7 ms the firmware spends latching the previous frame with interrupts disabled.
+    /// The 64-byte AVR buffer holds 0.6 ms of that, the rest is lost, the parser
+    /// resynchronises on the next header and the frame is gone - and a blackout has
+    /// nothing behind it to correct the loss, because sending stops right after. On exit
+    /// it failed every time: the output thread is joined immediately after a send.
+    ///
+    /// Waiting the cycle out is what makes the frame land. The repeats cover the six
+    /// header bytes of one frame being read as pixels of another when the first still
+    /// arrives short.
+    /// </summary>
+    const int BlackoutRepeats = 3;
+
+    /// <summary>Waits out the remainder of the controller's cycle.</summary>
+    void WaitForController()
+    {
+        double left = ReadyInMs;
+        if (left > 0) Thread.Sleep((int)Math.Ceiling(left));
+    }
+
+    /// <summary>How long the port is given to hand the pending bytes to the wire.</summary>
+    const int DrainWaitMs = 250;
+
+    /// <summary>
+    /// Tail after the driver queue is empty, covering the USB bridge's own buffering and
+    /// the 30 us per LED the strip needs to latch.
+    /// </summary>
+    const int DrainTailMs = 20;
+
+    /// <summary>
+    /// Waits for bytes already handed to the driver to reach the wire.
+    ///
+    /// Write() returns once the driver has taken the frame, and both closing the handle
+    /// and the machine suspending drop whatever has not gone out yet. That is why the
+    /// blackout frame never reached the strip: it was written on exit and on sleep, and
+    /// the strip went dark only later, on the firmware's own 10 s timeout. With that
+    /// timeout off, or with the strip on a separate supply, it stayed lit.
+    /// </summary>
+    void Drain()
+    {
+        try
+        {
+            long until = Environment.TickCount64 + DrainWaitMs;
+            while (_port is { IsOpen: true } && _port.BytesToWrite > 0 && Environment.TickCount64 < until)
+                Thread.Sleep(1);
+        }
+        catch { /* порт мог исчезнуть, пока ждали */ }
+
+        Thread.Sleep(DrainTailMs);
     }
 
     public bool TryReconnect(string portName, int baud, int ledCount)
@@ -302,10 +390,16 @@ public sealed class AdalightDevice : IDisposable
 
     public void Close()
     {
-        try { _port?.Close(); } catch { /* already gone */ }
-        _port?.Dispose();
-        _port = null;
-        Status = Loc.P("не подключено", "not connected");
+        lock (_io)
+        {
+            // закрытие хэндла отменяет неотправленное, поэтому сначала ждём
+            if (_port is { IsOpen: true }) Drain();
+
+            try { _port?.Close(); } catch { /* already gone */ }
+            _port?.Dispose();
+            _port = null;
+            Status = Loc.P("не подключено", "not connected");
+        }
     }
 
     public void Dispose() => Close();

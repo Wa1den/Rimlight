@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -36,6 +36,29 @@ public sealed class PowerWatcher : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     static extern bool UnregisterPowerSettingNotification(IntPtr handle);
 
+    const int WTS_CURRENT_SESSION = -1;
+    const int WTSSessionInfoEx = 25;
+    const int WTS_SESSIONSTATE_LOCK = 0;
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    static extern bool WTSQuerySessionInformation(IntPtr server, int sessionId, int infoClass,
+                                                  out IntPtr buffer, out int bytesReturned);
+
+    [DllImport("wtsapi32.dll")]
+    static extern void WTSFreeMemory(IntPtr memory);
+
+    /// <summary>
+    /// The head of WTSINFOEX_LEVEL1_W. The union it sits in is aligned to 8 by the
+    /// LARGE_INTEGERs further down, so it starts one pointer past the level field.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    struct WtsInfoLevel1Head
+    {
+        public uint SessionId;
+        public int SessionState;
+        public int SessionFlags;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     struct POWERBROADCAST_SETTING
     {
@@ -63,8 +86,40 @@ public sealed class PowerWatcher : IDisposable
 
     public PowerWatcher()
     {
+        _locked = QueryLocked();
+
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
+    }
+
+    /// <summary>
+    /// Whether the session is locked right now.
+    ///
+    /// Registering for display power returns the current state straight away. Lock state
+    /// arrives only with the next switch, so a start into an already locked session read
+    /// as unlocked and the strip stayed lit.
+    /// </summary>
+    static bool QueryLocked()
+    {
+        IntPtr buffer = IntPtr.Zero;
+        try
+        {
+            if (!WTSQuerySessionInformation(IntPtr.Zero, WTS_CURRENT_SESSION, WTSSessionInfoEx,
+                                            out buffer, out int bytes) ||
+                bytes < IntPtr.Size + Marshal.SizeOf<WtsInfoLevel1Head>())
+                return false;
+
+            var head = Marshal.PtrToStructure<WtsInfoLevel1Head>(buffer + IntPtr.Size);
+            return head.SessionFlags == WTS_SESSIONSTATE_LOCK;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (buffer != IntPtr.Zero) WTSFreeMemory(buffer);
+        }
     }
 
     /// <summary>Display power only reaches a window, so one has to be handed over.</summary>

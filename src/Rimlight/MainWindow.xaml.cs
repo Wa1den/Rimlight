@@ -94,17 +94,7 @@ public partial class MainWindow : Window
         // The watcher only reports; deciding what counts as "nobody is looking" stays here,
         // because it is this application's settings that say so.
         _power = new PowerWatcher();
-        _power.Changed += (_, state) =>
-        {
-            string? reason =
-                state.Suspended && _cfg.OffOnSuspend ? Loc.P("сон", "sleep") :
-                state.Locked && _cfg.OffOnLock ? Loc.P("блокировка", "locked") :
-                state.DisplayOff && _cfg.OffOnDisplayOff ? Loc.P("экран выключен", "display off") :
-                null;
-
-            if (reason != null) _engine.Pause(reason);
-            else _engine.Resume();
-        };
+        _power.Changed += (_, state) => ApplyPowerState(state);
 
         RestoreWindowGeometry();
 
@@ -146,6 +136,10 @@ public partial class MainWindow : Window
             _power.Attach(this);
             SetupTray();
             Restart();
+
+            // Attach reports the display straight away, the lock state was read in the
+            // watcher's constructor, and neither of them raises anything on its own.
+            ApplyPowerState(_power.State);
 
             // the startup pass had to estimate the window frame; now it can be measured
             if (!_cfg.ShowPreview) ApplyPreviewLayout();
@@ -216,6 +210,39 @@ public partial class MainWindow : Window
             _power.Dispose();
             _engine.Dispose();
         };
+    }
+
+    void ApplyPowerState(PowerState state)
+    {
+        string? reason =
+            state.Suspended && _cfg.OffOnSuspend ? Loc.P("сон", "sleep") :
+            state.Locked && _cfg.OffOnLock ? Loc.P("блокировка", "locked") :
+            state.DisplayOff && _cfg.OffOnDisplayOff ? Loc.P("экран выключен", "display off") :
+            null;
+
+        // Экран погашен, а гасить ленту не просили: захват отдаёт кадры и дальше, но в
+        // них чернота, и лента гасла. Держим последний кадр.
+        _engine.Freeze(state.DisplayOff && !_cfg.OffOnDisplayOff);
+
+        if (reason != null) _engine.Pause(reason);
+        else _engine.Resume(WakeHoldOffMs(state));
+    }
+
+    /// <summary>
+    /// How long the strip is left dark after a wake before sending resumes.
+    ///
+    /// A USB serial adapter re-enumerated during sleep is not back the instant Windows
+    /// reports the resume, and writing into it costs a dropped link and a reconnect that
+    /// takes just as long anyway.
+    /// </summary>
+    const int ResumeHoldMs = 2000;
+
+    int WakeHoldOffMs(PowerState state)
+    {
+        if (state.Suspended || _power.LastResumeTicks == 0) return 0;
+
+        long since = Environment.TickCount64 - _power.LastResumeTicks;
+        return since < ResumeHoldMs ? (int)(ResumeHoldMs - since) : 0;
     }
 
     // ---- window geometry ----------------------------------------------------

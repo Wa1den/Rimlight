@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
@@ -42,9 +42,21 @@ public sealed class RimlightEngine : IDisposable
     Thread? _outputThread;
     volatile bool _running;
     volatile bool _paused;
+    volatile bool _frozen;
     volatile bool _relayout;
     volatile bool _restartCapture;
     string _pauseReason = "";
+    long _sendHoldUntil;
+
+    /// <summary>
+    /// Held around the colour pass and the send, so that a pause taken on another thread
+    /// cannot land its black frame in the middle of one.
+    ///
+    /// The output thread checks the pause flag at the top of its cycle and reaches the
+    /// port some milliseconds later, and it was in that gap that a colour frame went out
+    /// after the blackout and left the strip lit.
+    /// </summary>
+    readonly object _sendGate = new();
 
     RimlightConfig _cfg = new();
     LedZone[] _zones = Array.Empty<LedZone>();
@@ -61,6 +73,9 @@ public sealed class RimlightEngine : IDisposable
     long _imageVersion;
     byte[] _sampled = Array.Empty<byte>();
     byte[] _output = Array.Empty<byte>();
+
+    /// <summary>All zeroes, resent at the keepalive interval for as long as the pause lasts.</summary>
+    byte[] _black = Array.Empty<byte>();
 
     readonly object _previewLock = new();
     byte[] _preview = Array.Empty<byte>();
@@ -363,6 +378,17 @@ public sealed class RimlightEngine : IDisposable
 
             if (_paused)
             {
+                // Тёмная лента поддерживается кадрами, а не молчанием: кадр, потерянный
+                // прошивкой, иначе некому исправить, да и гашение по таймауту в ней может
+                // быть выключено. Одинаковые кадры Send() пропускает сам.
+                if (_black.Length != _output.Length) _black = new byte[_output.Length];
+
+                lock (_sendGate)
+                {
+                    if (_paused && _black.Length > 0 && !Holding())
+                        _device.Send(_black, onlyOnChange: true, _cfg.KeepAliveMs);
+                }
+
                 Thread.Sleep(50);
                 lastMs = sw.Elapsed.TotalMilliseconds;
                 continue;
@@ -379,6 +405,9 @@ public sealed class RimlightEngine : IDisposable
             bool haveNewFrame = _capture != null &&
                 _capture.TryGetImage(ref _image, ref _imageVersion, out w, out h, out stride, out stamps) &&
                 w > 0 && h > 0;
+
+            // Пока кадр удержан, новые не разбираются: экран погашен, и в них чернота.
+            if (_frozen) haveNewFrame = false;
 
             // when this thread got its hands on the frame, splitting the way here from
             // the way out - the two are worth telling apart, and one of them is not ours
@@ -410,12 +439,15 @@ public sealed class RimlightEngine : IDisposable
             // on capture events. Stepping it only when a frame arrived left it stranded
             // half-way whenever the screen went still after a change - most visibly in the
             // layout overlay, where one click produces exactly one frame and then silence.
-            if (everSampled)
+            if (everSampled && !_frozen)
             {
                 double dt = startMs - lastMs;
                 lastMs = startMs;
-                _pipeline.Process(_sampled, _output, _cfg.ToColorSettings(), _zones.Length, dt <= 0 ? periodMs : dt);
-                NeutraliseShadows(_cfg.ShadowNeutral);
+                lock (_sendGate)
+                {
+                    _pipeline.Process(_sampled, _output, _cfg.ToColorSettings(), _zones.Length, dt <= 0 ? periodMs : dt);
+                    NeutraliseShadows(_cfg.ShadowNeutral);
+                }
                 MeasureDuty();
 
                 // после обесцвечивания, чтобы превью показывало то же, что уходит на ленту
@@ -448,8 +480,16 @@ public sealed class RimlightEngine : IDisposable
 
             long sentBefore = _device.FramesSent;
 
-            if (_output.Length > 0 && (haveNewFrame || !flowing) &&
-                !_device.Send(_output, _cfg.SendOnlyOnChange, _cfg.KeepAliveMs))
+            // A held picture carries nothing new, so the change filter is forced on
+            // regardless of the setting and only the keepalive goes out.
+            bool linkLost = false;
+            lock (_sendGate)
+            {
+                if (!_paused && !Holding() && _output.Length > 0 && (haveNewFrame || !flowing))
+                    linkLost = !_device.Send(_output, _frozen || _cfg.SendOnlyOnChange, _cfg.KeepAliveMs);
+            }
+
+            if (linkLost)
             {
                 // the port dropped; retry at a human pace rather than spinning
                 long now = Environment.TickCount64;
@@ -646,23 +686,72 @@ public sealed class RimlightEngine : IDisposable
         }
     }
 
-    /// <summary>Darkens the strip and stops sending, for lock, sleep and display off.</summary>
+    /// <summary>
+    /// Darkens the strip and stops sending, for lock, sleep and display off.
+    ///
+    /// Blocks until the black frame is on the wire, because the caller is often the
+    /// suspend notification and the machine stops taking bytes moments after it returns.
+    /// </summary>
     public void Pause(string reason)
     {
-        if (_paused) return;
-        _pauseReason = reason;
-        _paused = true;
-        _device.Blackout();
+        bool already;
+        lock (_sendGate)
+        {
+            already = _paused;
+            _pauseReason = reason;
+            _paused = true;
+            if (!already) _device.Blackout();
+        }
+
+        // Reported again when the reason changes: the display goes off first and the
+        // session locks after it, and the warning used to keep naming the display.
         ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("пауза: ", "paused: ") + reason);
     }
 
-    public void Resume()
+    /// <param name="holdOffMs">
+    /// How long to wait before sending again. Hardware re-enumerated during sleep is not
+    /// back the instant Windows reports the resume, and writing into a port that is not
+    /// there yet costs a dropped link and a reconnect.
+    /// </param>
+    public void Resume(int holdOffMs = 0)
     {
-        if (!_paused) return;
-        _paused = false;
-        _pauseReason = "";
-        _pipeline.Reset(_zones.Length);   // do not fade in from stale colours
+        lock (_sendGate)
+        {
+            // Set before the pause is checked: a wake with the sleep box unticked never
+            // paused anything, and the port is just as absent for it.
+            _sendHoldUntil = holdOffMs > 0 ? Environment.TickCount64 + holdOffMs : 0;
+
+            if (!_paused) return;
+            _paused = false;
+            _pauseReason = "";
+            _pipeline.Reset(_zones.Length);   // do not fade in from stale colours
+        }
         ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("продолжение", "resumed"));
+    }
+
+    /// <summary>Whether sending is still held off after a wake.</summary>
+    bool Holding() => _sendHoldUntil > 0 && Environment.TickCount64 < _sendHoldUntil;
+
+    /// <summary>
+    /// Holds the last picture on the strip instead of following the screen.
+    ///
+    /// For a display that is off while the user has asked for the light to stay on. The
+    /// send path already keeps the last frame alive when capture stops delivering, and
+    /// the strip still went dark, so what arrives from a blanked screen is black pixels
+    /// rather than nothing.
+    /// </summary>
+    public void Freeze(bool on)
+    {
+        if (_frozen == on) return;
+
+        lock (_sendGate)
+        {
+            _frozen = on;
+            if (!on) _pipeline.Reset(_zones.Length);
+        }
+
+        ProbeLog.Log(Loc.P("движок", "engine"),
+                     on ? Loc.P("кадр удержан", "picture held") : Loc.P("кадр отпущен", "picture released"));
     }
 
     public void Stop()

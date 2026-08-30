@@ -32,6 +32,49 @@ public sealed unsafe class FrameSubscriber : IDisposable
     public long Retries { get; private set; }
 
     /// <summary>
+    /// When the last frame was published, on the publisher's <see cref="Environment.TickCount64"/>
+    /// clock, or zero when it retired the bus on its way out.
+    ///
+    /// Read straight from the header rather than through a frame: a screen that does not
+    /// change produces no frames at all, so silence on its own says nothing.
+    /// </summary>
+    public long LastPublishTicks =>
+        _ptr == null ? 0 : Volatile.Read(ref *(long*)(_ptr + FrameBus.OffTimestamp));
+
+    /// <summary>The publisher's process id out of the header, zero when it wrote none.</summary>
+    public int PublisherPid => _ptr == null ? 0 : *(int*)(_ptr + FrameBus.OffPid);
+
+    /// <summary>
+    /// Whether the publisher is still there at all.
+    ///
+    /// The mapping outlives the process that made it, because a reader holding a view keeps
+    /// the section alive, so an abandoned bus looks exactly like a live one with nothing new
+    /// to say. A bus retired on the way out settles it at once; a publisher that was killed
+    /// leaves the header as it was, and then the only thing left to check is whether that
+    /// process is still running.
+    /// </summary>
+    public bool PublisherRunning
+    {
+        get
+        {
+            if (_ptr == null || LastPublishTicks == 0) return false;
+
+            int pid = PublisherPid;
+            if (pid <= 0) return true;      // шина без номера процесса: судить не по чему
+
+            try
+            {
+                using var publisher = System.Diagnostics.Process.GetProcessById(pid);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
     /// Tries to attach, at most once every couple of seconds. Safe to call every tick:
     /// OpenExisting on a missing map throws, and throwing sixty times a second to learn
     /// something that changes once a minute is not free.

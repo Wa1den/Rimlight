@@ -37,6 +37,7 @@ public sealed class RimlightEngine : IDisposable
     readonly ColorPipeline _pipeline = new();
     readonly FramePublisher _publisher = new();
     readonly CropDetector _crop = new();
+    readonly FrameFilter _filter = new();
 
     HybridBackend? _capture;
     Thread? _outputThread;
@@ -429,6 +430,10 @@ public sealed class RimlightEngine : IDisposable
                                      cropDt <= 0 || cropDt > 1000 ? periodMs : cropDt))
                         RemapZones();
                 }
+
+                // После публикации и поиска полос: модуль корпуса размывает кадр по своей
+                // настройке, а границы полос ищутся по резкому краю.
+                _filter.Apply(_cfg.Sharpness, _image, w, h, stride);
 
                 ZoneSampler.Sample(_image, w, h, stride, _sampleZones, _sampled);
                 everSampled = true;

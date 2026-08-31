@@ -149,6 +149,20 @@ public sealed class RimlightConfig
         InsetPercent = CropInsetPercent
     };
 
+    // ---- frame --------------------------------------------------------------
+
+    /// <summary>
+    /// How the frame is worked over before the zones are read, in percent from -50 to 50.
+    /// Zero takes the picture as captured.
+    ///
+    /// Below zero it is defocused: an LED then draws its colour from the neighbourhood
+    /// around its sampling zone without that zone growing, and neighbouring stretches of
+    /// the strip run into each other. Above zero it is sharpened: neighbouring zones are
+    /// pushed apart, so a light patch beside a dark one reads brighter. See
+    /// <see cref="FrameFilter"/>.
+    /// </summary>
+    public int Sharpness { get; set; }
+
     // ---- colour -------------------------------------------------------------
     public double MaxBrightness { get; set; } = 1.0;      // 0..1 overall cap
     public double MinLuma { get; set; } = 0.0;            // below this the strip goes dark

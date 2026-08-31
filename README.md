@@ -108,9 +108,17 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
    которое стоит по умолчанию. Без ограничения частота упирается в период контроллера —
    около 7 мс на 122 диода при 1 Мбод. Ограничение уменьшает число сводов кадра на
    видеокарте, так что на слабой карте или в тяжёлой игре оно может оказаться полезным.
+   Ползунок **«Размытие и резкость»** работает по кадру до выборки зон: влево кадр
+   расфокусируется, и соседние участки ленты переливаются друг в друга, вправо соседние
+   зоны расходятся по яркости. В нуле, как стоит по умолчанию, кадр не обрабатывается
+   вовсе; на краю шкалы обработка добавляет к задержке около 2 мс.
 8. **Питание** — ползунок **«Предел тока»** ограничивает ток всей ленты. Срабатывает
    только на светлых кадрах, поэтому на цветных сценах разницы обычно не видно.
    Выставляется по блоку питания: 120 диодов WS2812 на полном белом берут около 7 А.
+
+Кнопка **«Стоп»** в полосе внизу окна останавливает вывод и гасит ленту, не закрывая
+программу; повторное нажатие возвращает подсветку. Рядом с ней написано, что происходит
+сейчас: идёт ли вывод и с какой частотой, остановлен ли он и почему, открылся ли порт.
 
 Кнопка **«По умолчанию»** в разделе «Основное» возвращает настройки к стандартным, не
 трогая выбор монитора и порта, раскладку ленты, язык и положение окна.
@@ -331,10 +339,19 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
    and 10-20 ms at **no limit**, which is the default. With no limit the rate meets the
    controller's own period instead - about 7 ms for 122 LEDs at 1 Mbaud. A limit cuts the
    number of frame reductions done on the graphics card, which can be worth having on a
-   weak card or in a demanding game.
+   weak card or in a demanding game. The **Blur and sharpness** slider works on the frame
+   before the zones are read off it: to the left the frame is defocused and neighbouring
+   stretches of the strip run into each other, to the right neighbouring zones are pushed
+   apart in brightness. At zero, the default, the frame is not worked over at all; at
+   either end of the scale the work adds about 2 ms to the delay.
 8. **Power** — the **Current ceiling** slider caps the current the whole strip draws. It
    only engages on bright frames, so coloured scenes usually show no difference. Set it by
    the supply: 120 WS2812 at full white draw about 7 A.
+
+The **Stop** button in the bar along the bottom of the window stops the output and darkens
+the strip without closing the program; pressing it again brings the light back. Beside it
+stands what is happening now: whether the output is running and at what rate, whether it is
+stopped and why, and whether the port opened.
 
 The **Defaults** button in the General section puts the settings back to their standard
 values, leaving the chosen monitor and port, the strip layout, the language and the window

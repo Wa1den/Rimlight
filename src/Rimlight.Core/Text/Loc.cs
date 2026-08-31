@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "29";
+    const string Version = "31";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -363,6 +363,10 @@ public static class Loc
         ["capture.fps"] = "Максимум кадров в секунду",
         ["capture.fps.free"] = "без ограничения",
         ["capture.fps.note"] = "Ограничивает частоту, с которой кадры экрана сводятся к цветам зон, и вместе с ней нагрузку на видеокарту. Без ограничения кадры идут с той частотой, которую успевает принять лента. Ограничение кадров может повысить задержку вывода подсветки на ленту.",
+        ["capture.sharpness"] = "Размытие и резкость",
+        ["capture.sharpness.note"] = "Влево кадр расфокусируется до выборки: диод берёт цвет с окрестности своей зоны, не расширяя её, и соседние участки ленты переливаются друг в друга. Вправо соседние зоны расходятся по яркости, и светлое рядом с тёмным светит заметнее. На краю шкалы обработка кадра добавляет к задержке около 2 мс.",
+        ["capture.blur"] = "размытие {0} %",
+        ["capture.sharp"] = "резкость {0} %",
         ["capture.onchange"] = "Отправлять только при смене цветов",
         ["capture.onchange.note"] = "Прошивка выключает ленту, если данные не приходят 10 секунд, поэтому одинаковый кадр всё равно отправляется раз в 2 секунды.",
         ["capture.publish"] = "Передавать кадры модулю подсветки корпуса",
@@ -400,7 +404,6 @@ public static class Loc
         ["stats.reconnects"] = "переподключений",
         ["stats.notrunning"] = "захват не запущен",
 
-        ["warn.paused"] = "Пауза: {0}. Лента выключена.",
         ["warn.port"] = "Не удалось открыть порт. Проверьте имя порта и что он не занят другой программой.",
         ["warn.count"] = "Сумма диодов {0} должна совпадать со значением NUM_LEDS в прошивке, иначе изображение смещается вдоль ленты.",
 
@@ -413,6 +416,16 @@ public static class Loc
         ["apply"] = "Применить",
         ["cancel"] = "Отмена",
         ["unsaved"] = "Есть несохранённые изменения",
+
+        ["bar.start"] = "Старт",
+        ["bar.stop"] = "Стоп",
+        ["bar.started"] = "Вывод запущен.",
+        ["bar.stopped"] = "Вывод остановлен, лента погашена.",
+        ["bar.running"] = "Идёт вывод, {0}.",
+        ["bar.paused"] = "Вывод остановлен: {0}.",
+        ["bar.byhand"] = "вручную",
+        ["bar.applied"] = "Настройки применены и сохранены.",
+        ["bar.cancelled"] = "Изменения отменены.",
         ["capture.autoSuffix"] = "авто",
         ["layout.overlay.show"] = "Показать схему на экране",
         ["layout.overlay.hide"] = "Скрыть схему",
@@ -548,6 +561,10 @@ public static class Loc
         ["capture.fps"] = "Maximum frames per second",
         ["capture.fps.free"] = "no limit",
         ["capture.fps.note"] = "Limits how often screen frames are reduced to zone colours, and with that the load on the graphics card. With no limit frames go through as fast as the strip can accept them. Limiting the frame rate can increase the delay before a change reaches the strip.",
+        ["capture.sharpness"] = "Blur and sharpness",
+        ["capture.sharpness.note"] = "To the left the frame is defocused before sampling: an LED takes its colour from around its zone without that zone growing, and neighbouring stretches of the strip run into each other. To the right neighbouring zones are pushed apart in brightness, so a light patch beside a dark one reads stronger. At the end of the scale the work on the frame adds about 2 ms of delay.",
+        ["capture.blur"] = "blur {0}%",
+        ["capture.sharp"] = "sharpness {0}%",
         ["capture.onchange"] = "Send only when colours change",
         ["capture.onchange.note"] = "The firmware turns the strip off after 10 seconds without data, so an identical frame is still sent every 2 seconds.",
         ["capture.publish"] = "Share frames with the case lighting module",
@@ -585,7 +602,6 @@ public static class Loc
         ["stats.reconnects"] = "reconnects",
         ["stats.notrunning"] = "capture not running",
 
-        ["warn.paused"] = "Paused: {0}. The strip is off.",
         ["warn.port"] = "Could not open the port. Check the port name and that no other program is using it.",
         ["warn.count"] = "The LED total {0} must match NUM_LEDS in the firmware, otherwise the image is shifted along the strip.",
 
@@ -598,6 +614,16 @@ public static class Loc
         ["apply"] = "Apply",
         ["cancel"] = "Cancel",
         ["unsaved"] = "Unsaved changes",
+
+        ["bar.start"] = "Start",
+        ["bar.stop"] = "Stop",
+        ["bar.started"] = "Output started.",
+        ["bar.stopped"] = "Output stopped, the strip is dark.",
+        ["bar.running"] = "Output is running, {0}.",
+        ["bar.paused"] = "Output stopped: {0}.",
+        ["bar.byhand"] = "by hand",
+        ["bar.applied"] = "Settings applied and saved.",
+        ["bar.cancelled"] = "Changes discarded.",
         ["capture.autoSuffix"] = "auto",
         ["layout.overlay.show"] = "Show map on screen",
         ["layout.overlay.hide"] = "Hide map",

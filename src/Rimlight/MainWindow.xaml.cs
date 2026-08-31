@@ -56,6 +56,18 @@ public partial class MainWindow : Window
     bool _rebuildingUi;
 
     /// <summary>
+    /// Whether the strip is meant to be lit at all, as told by the two buttons.
+    ///
+    /// Kept apart from the engine's own pause because the two are set by different hands:
+    /// a display coming back on resumes what the power events paused, and without this it
+    /// would resume what the user had stopped as well.
+    ///
+    /// Session state on purpose: the program's job is to light the strip, so every start
+    /// begins with the output running.
+    /// </summary>
+    bool _outputWanted = true;
+
+    /// <summary>
     /// The last applied configuration. Edits act on _cfg immediately so the strip responds
     /// live, but nothing reaches disk until Apply; Cancel copies this back.
     /// </summary>
@@ -184,6 +196,8 @@ public partial class MainWindow : Window
         ApplyButton.Click += (_, _) => ApplyChanges();
         CancelButton.Click += (_, _) => CancelChanges();
 
+        OutputButton.Click += (_, _) => { if (_outputWanted) StopOutput(); else StartOutput(); };
+
         // a Windows shutdown must not be cancelled into the tray
         Application.Current.SessionEnding += (_, _) => _reallyClosing = true;
 
@@ -225,7 +239,103 @@ public partial class MainWindow : Window
         _engine.Freeze(state.DisplayOff && !_cfg.OffOnDisplayOff);
 
         if (reason != null) _engine.Pause(reason);
-        else _engine.Resume(WakeHoldOffMs(state));
+        else if (_outputWanted) _engine.Resume(WakeHoldOffMs(state));
+    }
+
+    // ---- старт и стоп -------------------------------------------------------
+
+    void StartOutput()
+    {
+        _outputWanted = true;
+
+        // Тем же путём, что и возврат из сна: если ленту гасит питание, кнопка её не
+        // зажигает.
+        ApplyPowerState(_power.State);
+
+        Say(_engine.IsPaused
+            ? string.Format(Loc.T("bar.paused"), _engine.PauseReason)
+            : Loc.T("bar.started"), StatusHoldMs);
+    }
+
+    void StopOutput()
+    {
+        _outputWanted = false;
+        _engine.Pause(Loc.T("bar.byhand"));
+        Say(Loc.T("bar.stopped"), StatusHoldMs);
+    }
+
+    /// <summary>How long an answer to a button press stays up against the timer.</summary>
+    const int StatusHoldMs = 4000;
+
+    /// <summary>
+    /// Puts a line in the status bar, and optionally keeps it there for a while.
+    ///
+    /// A hold is needed because the timer has something to say twenty times a second, and
+    /// it would replace the answer to a button press before it could be read.
+    /// </summary>
+    /// <param name="warn">
+    /// A fault rather than a state, painted in the warning colour. The line took over from
+    /// a card in the settings column that said the same thing a second time.
+    /// </param>
+    void Say(string text, int holdMs = 0, bool warn = false)
+    {
+        StatusText.Text = text;
+
+        // Полоса режет строку по многоточию, поэтому целиком она читается в подсказке.
+        StatusText.ToolTip = text;
+        StatusText.Foreground = Res(warn ? "Warn" : "FgDim");
+        _holdUntil = holdMs > 0 ? Environment.TickCount64 + holdMs : 0;
+    }
+
+    /// <summary>
+    /// What the timer has to say, which waits its turn while a held message is still up.
+    /// Anything the user does speaks over it, since that is an answer to a button press.
+    /// </summary>
+    void SayFromTick(string text, bool warn = false)
+    {
+        if (Environment.TickCount64 < _holdUntil) return;
+        if (StatusText.Text != text) Say(text, 0, warn);
+    }
+
+    long _holdUntil;
+
+    /// <summary>
+    /// The frame rate as the status line shows it, held still between refreshes.
+    ///
+    /// The line is rebuilt twenty times a second, and a figure that changes by one every
+    /// tick is unreadable. A second is long enough that the number stands still and short
+    /// enough that a stall is still visible in it.
+    /// </summary>
+    int ShownRate()
+    {
+        long now = Environment.TickCount64;
+        if (now - _rateAt < RateEveryMs) return _rateShown;
+
+        _rateAt = now;
+        _rateShown = (int)Math.Round(_engine.OutputFps);
+        return _rateShown;
+    }
+
+    const int RateEveryMs = 1000;
+    long _rateAt;
+    int _rateShown;
+
+    /// <summary>
+    /// The frame rate with its noun in the right case.
+    ///
+    /// Russian declines the noun after a number - one кадр, two кадра, five кадров - and a
+    /// status line that reads "3 кадров" looks like a bug in everything around it.
+    /// </summary>
+    static string Rate(int n)
+    {
+        int tail = n % 100, last = n % 10;
+
+        string word = tail is >= 11 and <= 14 ? Loc.P("кадров", "frames")
+                    : last == 1 ? Loc.P("кадр", "frame")
+                    : last is >= 2 and <= 4 ? Loc.P("кадра", "frames")
+                    : Loc.P("кадров", "frames");
+
+        return string.Format(Loc.P("{0} {1} в секунду", "{0} {1} per second"), n, word);
     }
 
     /// <summary>
@@ -743,6 +853,15 @@ public partial class MainWindow : Window
                 v => v >= fpsFree ? Loc.T("capture.fps.free") : v.ToString("0"),
                 Loc.T("capture.fps.note")));
 
+            // Один ползунок на две противоположные вещи, ноль посередине: включить обе
+            // сразу нельзя, вторая отменяла бы первую. Шкала целая, в процентах: при
+            // дробном шаге ноль не попадается ровно, и выключить настройку нечем.
+            panel.Children.Add(Slider(Loc.T("capture.sharpness"), _cfg.Sharpness,
+                -FrameFilter.MaxPercent, FrameFilter.MaxPercent, 1,
+                v => _cfg.Sharpness = (int)Math.Round(v),
+                DescribeSharpness,
+                Loc.T("capture.sharpness.note")));
+
             panel.Children.Add(Check(Loc.T("capture.onchange"), _cfg.SendOnlyOnChange, v => _cfg.SendOnlyOnChange = v,
                 Loc.T("capture.onchange.note")));
 
@@ -805,6 +924,12 @@ public partial class MainWindow : Window
         Nav.SelectedIndex = Math.Min(selected, Nav.Items.Count - 1);
         ApplyPreviewLayout();    // rebuild paths include Cancel and Import, which may flip it
     }
+
+    /// <summary>Each half of the scale says which of the two is running and how far.</summary>
+    static string DescribeSharpness(double v) =>
+        v <= -1 ? string.Format(Loc.T("capture.blur"), (int)Math.Round(-v)) :
+        v >= 1 ? string.Format(Loc.T("capture.sharp"), (int)Math.Round(v)) :
+        Loc.T("off");
 
     /// <summary>
     /// What the detector currently sees, live. Without it the settings are guesswork: the
@@ -946,6 +1071,7 @@ public partial class MainWindow : Window
         _cfg.Save();
         _saved = _cfg.Clone();
         _dirty = false;
+        Say(Loc.T("bar.applied"), StatusHoldMs);
     }
 
     void CancelChanges()
@@ -962,6 +1088,10 @@ public partial class MainWindow : Window
 
         _engine.RequestRelayout();
         _engine.RestartCapture();
+
+        // после BuildSettings: перестроение страницы заново назначает подписи, но не
+        // трогает полосу внизу
+        Say(Loc.T("bar.cancelled"), StatusHoldMs);
     }
 
     // ---- import / export ----------------------------------------------------
@@ -1346,17 +1476,20 @@ public partial class MainWindow : Window
 
         UpdateCropStatus();
 
-        var warnings = new List<string>();
-        if (_engine.IsPaused) warnings.Add(string.Format(Loc.T("warn.paused"), _engine.PauseReason));
-        if (_engine.DeviceHasError) warnings.Add(Loc.T("warn.port"));
-
-        WarnText.Text = string.Join("\n", warnings);
-        WarnCard.Visibility = warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Остановленный вывод показывается прежде ошибки порта: лента погашена нажатием
+        // кнопки, и порт в этот момент ни при чём.
+        if (_engine.IsPaused) SayFromTick(string.Format(Loc.T("bar.paused"), _engine.PauseReason));
+        else if (_engine.DeviceHasError) SayFromTick(Loc.T("warn.port"), warn: true);
+        else SayFromTick(string.Format(Loc.T("bar.running"), Rate(ShownRate())));
 
         DirtyBar.Visibility = _dirty ? Visibility.Visible : Visibility.Collapsed;
         DirtyText.Text = Loc.T("unsaved");
         ApplyButton.Content = Loc.T("apply");
         CancelButton.Content = Loc.T("cancel");
+
+        // Подпись по намерению, а не по состоянию движка: когда лента погашена по событию
+        // питания, кнопка остаётся «Стоп», и нажатие останавливает вывод совсем.
+        OutputButton.Content = Loc.T(_outputWanted ? "bar.stop" : "bar.start");
     }
 
     // ---- small control helpers ---------------------------------------------

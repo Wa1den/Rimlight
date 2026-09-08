@@ -52,6 +52,18 @@ public sealed class HybridBackend : CaptureBackendBase
     const int ProbeMs = 700;
 
     /// <summary>
+    /// How long DDA must be silent before WGC is brought up to fill the gap.
+    ///
+    /// Longer than <see cref="AliveMs"/> so the probe below has time to answer whether the
+    /// screen is changing at all. Gated on silence alone, the start fired on a still
+    /// desktop; creating a capture session makes the compositor produce a frame, DDA
+    /// reports that frame as recovery, and the session is stopped again. On an idle
+    /// machine the loop ran 17 times in two minutes, one session every two seconds, each
+    /// lasting about 130 ms and delivering a single frame.
+    /// </summary>
+    const int WgcWakeMs = AliveMs + ProbeMs + 300;
+
+    /// <summary>
     /// How often the ladder re-examines itself when no frames are arriving - which is
     /// exactly the situation it exists for. Frames themselves no longer wait for this:
     /// the loop wakes on the child's own signal.
@@ -158,11 +170,15 @@ public sealed class HybridBackend : CaptureBackendBase
                 if (ddaNew) { lastDdaFrames = ds.Frames; lastDdaTicks = now; lastDdaPoll = now; }
                 if (ds.Timeouts != lastDdaTimeouts) { lastDdaTimeouts = ds.Timeouts; lastDdaPoll = now; }
 
-                // bring WGC up only once DDA has actually gone quiet
-                // on the same window: starting and stopping WGC between caret blinks was
-                // churning a capture client once a second, which the cursor showed
-                if (wgcLazy && !_wgc.IsRunning && lastDdaTicks != 0 && now - lastDdaTicks > AliveMs)
+                // Brought up on the same evidence as GDI: the cheap path silent and the
+                // screen known to be changing. Absence of frames on its own is what a
+                // still desktop looks like.
+                if (wgcLazy && !_wgc.IsRunning && !staticConfirmed
+                    && lastDdaTicks != 0 && now - lastDdaTicks > WgcWakeMs)
+                {
+                    lastWgcFrames = -1;   // its counter restarts from zero
                     _wgc.Start(Monitor);
+                }
                 else if (wgcLazy && _wgc.IsRunning && ddaProducingPrev && now - lastDdaTicks <= AliveMs
                          && now - lastWgcUseful > RecoverMs)
                     _wgc.Stop();
@@ -333,7 +349,12 @@ public sealed class HybridBackend : CaptureBackendBase
                         {
                             var gs = _gdi.Metrics.Snapshot();
                             lastGdiFrames = gs.Frames;
-                            Metrics.NoteFrame(gs.R, gs.G, gs.B, false, gs.AcquireMs, gs.ReduceMs);
+
+                            // the same guard the cheap paths get: a backend just started
+                            // still holds the reset colour 0,0,0, and forwarding it
+                            // counted a dark spike that was never on screen
+                            if (gs.Frames > 0)
+                                Metrics.NoteFrame(gs.R, gs.G, gs.B, false, gs.AcquireMs, gs.ReduceMs);
                             Metrics.NoteStatus(BackendStatus.Ok, "GDI (запасной)");
                         }
                         break;

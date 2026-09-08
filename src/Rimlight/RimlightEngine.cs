@@ -88,6 +88,9 @@ public sealed class RimlightEngine : IDisposable
     public long Reconnects => _device.Reconnects;
     public bool IsPaused => _paused;
 
+    /// <summary>Whether capture and the output thread are up at all, as against paused.</summary>
+    public bool IsRunning => _running;
+
     /// <summary>
     /// How old the picture was when it reached the wire. Measured from the present time
     /// the compositor reports, so it covers the whole path - capture, readback, relay,
@@ -759,7 +762,11 @@ public sealed class RimlightEngine : IDisposable
                      on ? Loc.P("кадр удержан", "picture held") : Loc.P("кадр отпущен", "picture released"));
     }
 
-    public void Stop()
+    /// <param name="blackout">
+    /// Darken the strip whatever the "off on exit" setting says. That setting is about
+    /// leaving the program; the Stop button is a request for the strip to go dark now.
+    /// </param>
+    public void Stop(bool blackout = false)
     {
         if (!_running && _capture == null) return;
 
@@ -767,13 +774,16 @@ public sealed class RimlightEngine : IDisposable
         _outputThread?.Join(2000);
         _outputThread = null;
 
-        if (_cfg.OffOnExit) _device.Blackout();
+        if (blackout || _cfg.OffOnExit) _device.Blackout();
         _device.Close();
         _publisher.Close();
 
         _capture?.Stop();
         _capture?.Dispose();
         _capture = null;
+
+        // the strip is dark, and the preview goes on showing the last frame otherwise
+        lock (_previewLock) Array.Clear(_preview);
 
         ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("стоп", "stopped"));
     }

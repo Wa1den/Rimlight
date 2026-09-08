@@ -29,8 +29,8 @@ public partial class MainWindow : Window
 
     readonly List<UIElement> _pages = new();
 
-    readonly TextBlock[] _statLabels = new TextBlock[9];
-    readonly TextBlock[] _statValues = new TextBlock[9];
+    readonly TextBlock[] _statLabels = new TextBlock[10];
+    readonly TextBlock[] _statValues = new TextBlock[10];
 
     /// <summary>Window width to come back to when the preview is switched on again.</summary>
     double _wideWidth;
@@ -125,6 +125,10 @@ public partial class MainWindow : Window
             _statLabels[i] = label;
             _statValues[i] = value;
         }
+
+        // оба места для статистики объявлены в разметке и переживают перестроение
+        // страниц, поэтому место выбирается один раз здесь и дальше только по галке
+        PlaceStats();
 
         PreviewToggle.Checked += (_, _) => { if (_rebuildingUi) return; _cfg.ShowPreview = true; MarkDirty(); ApplyPreviewLayout(); };
         PreviewToggle.Unchecked += (_, _) => { if (_rebuildingUi) return; _cfg.ShowPreview = false; MarkDirty(); ApplyPreviewLayout(); };
@@ -420,10 +424,10 @@ public partial class MainWindow : Window
     /// A width of its own also means the window cannot be dragged wider into empty space.
     /// </summary>
     /// <summary>
-    /// Card at the foot of the Main section that holds the statistics when they are not
-    /// under the zone map. Rebuilt with the section, so nothing may hold on to it.
+    /// The Main section's page, so the pinned statistics card can follow it. Compared by
+    /// reference rather than by index, which a reordered section list would silently break.
     /// </summary>
-    Border? _statsHost;
+    UIElement? _mainPage;
 
     /// <summary>
     /// Moves the statistics grid between its two places.
@@ -434,8 +438,7 @@ public partial class MainWindow : Window
     /// </summary>
     void PlaceStats()
     {
-        Border? host = _cfg.StatsUnderPreview ? StatsCard : _statsHost;
-        if (host == null) return;
+        Border host = _cfg.StatsUnderPreview ? StatsCard : StatsHost;
 
         if (StatsGrid.Parent is Border old)
         {
@@ -679,17 +682,10 @@ public partial class MainWindow : Window
             pathText.Inlines.Add(link);
             pathText.Margin = new Thickness(0, 8, 0, 0);
             panel.Children.Add(pathText);
-
-            // Второй дом статистики. Карточка строится всегда: раздел пересобирается
-            // только при смене языка, а галку переключают когда угодно.
-            _statsHost = new Border
-            {
-                Style = (Style)FindResource("Card"),
-                Margin = new Thickness(0, 12, 0, 0)
-            };
-            panel.Children.Add(_statsHost);
-            PlaceStats();
         });
+
+        // страница «Основное» только что добавлена; статистика показывается под ней
+        _mainPage = _pages[^1];
 
         AddTab(Loc.T("tab.device"), "", panel =>
         {
@@ -1486,7 +1482,8 @@ public partial class MainWindow : Window
         // the "per 5 s" figure becomes a running total - it read 1000 fps and climbing.
         cap?.Metrics.Tick();
 
-        string capLine = cap == null ? Loc.T("stats.notrunning") : cap.SourceSplit();
+        // без счётчика переключений: он переехал в строку метода, чтобы обе помещались
+        string capLine = cap == null ? Loc.T("stats.notrunning") : cap.SourceShare();
         string activeNow = cap?.ActiveSource ?? "-";
         if (_cfg.CaptureMode == CaptureMode.Auto) activeNow += $" ({Loc.T("capture.autoSuffix")})";
         var snap = cap?.Metrics.Snapshot();
@@ -1508,36 +1505,42 @@ public partial class MainWindow : Window
         if (_cfg.DetailedStats)
         {
             _statLabels[5].Text = Loc.T("stats.latency") + ":";
-            _statLabels[6].Text = Loc.T("stats.stages") + ":";
-            _statLabels[7].Text = Loc.T("stats.sources") + ":";
-            _statLabels[8].Text = Loc.T("stats.current") + ":";
+            _statLabels[6].Text = Loc.T("stats.dropped") + ":";
+            _statLabels[7].Text = Loc.T("stats.stages") + ":";
+            _statLabels[8].Text = Loc.T("stats.sources") + ":";
+            _statLabels[9].Text = Loc.T("stats.current") + ":";
         }
 
+        string ms = Loc.T("stats.ms");
+
         _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
-        _statValues[1].Text = activeNow;
-        _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1} fps; p50 {(snap?.P50Ms ?? 0):F1} ms; p99 {(snap?.P99Ms ?? 0):F1} ms";
+        // счётчик переключений стоит здесь, а не в строке источников: вместе с долями
+        // он в одну строку не помещался
+        _statValues[1].Text = cap == null ? activeNow
+            : $"{activeNow}; {Loc.T("stats.switches")} {cap.Switches}";
+        _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1} fps; p50 {(snap?.P50Ms ?? 0):F1}; p99 {(snap?.P99Ms ?? 0):F1} {ms}";
         _statValues[3].Text = $"{_engine.OutputFps:F1} fps; {Loc.T("stats.sent")} {_engine.FramesSent}; {Loc.T("stats.skipped")} {_engine.FramesSkipped}";
         _statValues[4].Text = $"{_engine.DeviceStatus}; {Loc.T("stats.reconnects")} {_engine.Reconnects}";
         // end to end: from the moment the compositor put the picture on screen to the
         // moment its colours went out of the port
         if (_cfg.DetailedStats)
         {
-            _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
+            _statValues[5].Text = $"{_engine.FrameAgeMs:F1}" +
                                   $"; p99 {_engine.FrameAgeP99Ms:F1}" +
-                                  $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
-                                  $"; {Loc.T("stats.dropped")} {Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
-                                  $", {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
-            _statValues[6].Text = $"{Loc.T("stats.stage.grab")} {_engine.StageGrabMs:F1}" +
+                                  $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1} {ms}";
+            _statValues[6].Text = $"{Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
+                                  $"; {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
+            _statValues[7].Text = $"{Loc.T("stats.stage.grab")} {_engine.StageGrabMs:F1}" +
                                   $"; {Loc.T("stats.stage.reduce")} {_engine.StageReduceMs:F1}" +
                                   $"; {Loc.T("stats.stage.relay")} {_engine.StageRelayMs:F1}" +
                                   $"; {Loc.T("stats.stage.out")} {_engine.StageOutMs:F1}";
-            _statValues[7].Text = capLine;
+            _statValues[8].Text = capLine;
 
             // against the ceiling in the same line, because the only question this answers
             // is whether the ceiling is doing anything
             double amps = _cfg.TotalLeds * (RimlightConfig.AmpsPerLedIdle +
                                             RimlightConfig.AmpsPerLedWhite * _engine.MeanDuty);
-            _statValues[8].Text = _cfg.PowerLimitAmps > 0
+            _statValues[9].Text = _cfg.PowerLimitAmps > 0
                 ? string.Format(Loc.T("stats.current.limited"), amps, _cfg.FullWhiteAmps, _cfg.PowerLimitAmps)
                 : string.Format(Loc.T("stats.current.free"), amps, _cfg.FullWhiteAmps);
         }
@@ -1545,9 +1548,9 @@ public partial class MainWindow : Window
         // обе галки применяются живо, поэтому видимость обеих карточек ставится каждый тик
         StatsCard.Visibility = _cfg.ShowStats && _cfg.StatsUnderPreview
             ? Visibility.Visible : Visibility.Collapsed;
-        if (_statsHost != null)
-            _statsHost.Visibility = _cfg.ShowStats && !_cfg.StatsUnderPreview
-                ? Visibility.Visible : Visibility.Collapsed;
+        StatsHost.Visibility = _cfg.ShowStats && !_cfg.StatsUnderPreview
+                               && ReferenceEquals(PageHost.Content, _mainPage)
+            ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateCropStatus();
 

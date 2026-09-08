@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "32";
+    const string Version = "33";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -394,15 +394,16 @@ public static class Loc
         ["stats.stage.reduce"] = "свод",
         ["stats.stage.relay"] = "реле",
         ["stats.stage.out"] = "провод",
-        ["stats.dropped"] = "отброшено:",
+        ["stats.dropped"] = "отброшено",
         ["stats.drop.queue"] = "очередь",
         ["stats.drop.rate"] = "темп",
+        ["stats.switches"] = "переключений",
         ["stats.sources"] = "источники",
         ["stats.current"] = "ток",
         ["stats.current.free"] = "{0:0.0} А из {1:0.0}",
         ["stats.current.limited"] = "{0:0.0} А из {1:0.0}; предел {2:0.0}",
         ["stats.sent"] = "отправлено",
-        ["stats.skipped"] = "пропущено одинаковых",
+        ["stats.skipped"] = "повторов",
         ["stats.reconnects"] = "переподключений",
         ["stats.notrunning"] = "захват не запущен",
 
@@ -594,15 +595,16 @@ public static class Loc
         ["stats.stage.reduce"] = "reduce",
         ["stats.stage.relay"] = "relay",
         ["stats.stage.out"] = "wire",
-        ["stats.dropped"] = "dropped:",
+        ["stats.dropped"] = "dropped",
         ["stats.drop.queue"] = "queue",
         ["stats.drop.rate"] = "rate",
+        ["stats.switches"] = "switches",
         ["stats.sources"] = "sources",
         ["stats.current"] = "current",
         ["stats.current.free"] = "{0:0.0} A of {1:0.0}",
         ["stats.current.limited"] = "{0:0.0} A of {1:0.0}; ceiling {2:0.0}",
         ["stats.sent"] = "sent",
-        ["stats.skipped"] = "identical skipped",
+        ["stats.skipped"] = "repeats",
         ["stats.reconnects"] = "reconnects",
         ["stats.notrunning"] = "capture not running",
 

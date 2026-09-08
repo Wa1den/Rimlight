@@ -148,15 +148,16 @@
   "stats.stage.reduce": "reduce",
   "stats.stage.relay": "relay",
   "stats.stage.out": "wire",
-  "stats.dropped": "dropped:",
+  "stats.dropped": "dropped",
   "stats.drop.queue": "queue",
   "stats.drop.rate": "rate",
+  "stats.switches": "switches",
   "stats.sources": "sources",
   "stats.current": "current",
   "stats.current.free": "{0:0.0} A of {1:0.0}",
   "stats.current.limited": "{0:0.0} A of {1:0.0}; ceiling {2:0.0}",
   "stats.sent": "sent",
-  "stats.skipped": "identical skipped",
+  "stats.skipped": "repeats",
   "stats.reconnects": "reconnects",
   "stats.notrunning": "capture not running",
   "warn.port": "Could not open the port. Check the port name and that no other program is using it.",
@@ -184,5 +185,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "32"
+  "_version": "33"
 }

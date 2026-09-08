@@ -137,6 +137,14 @@ public sealed class HybridBackend : CaptureBackendBase
         long probeStart = 0;
         ulong probeHash = 0;
         bool staticConfirmed = false;
+
+        // The other half of the probe's answer, and it has to be kept for the same reason.
+        // Only the "still" verdict used to be remembered: "moving" set want to GDI for the
+        // one pass it was decided on, and the next pass started a fresh probe and handed
+        // the picture back to the starved path. GDI was active for 20-40 ms out of every
+        // 700 - started, blitting at 17 ms a frame, and its frames thrown away, while the
+        // strip held whatever the starved path had last delivered.
+        bool movingConfirmed = false;
         long prevTick = Environment.TickCount64;
 
         // with a single method enabled there is nothing to fall back to or from
@@ -211,7 +219,12 @@ public sealed class HybridBackend : CaptureBackendBase
                 ddaProducingPrev = ddaProducing;
 
                 // a delivered frame means the picture moved, so any earlier verdict is stale
-                if (ddaProducing || wgcProducing) { staticConfirmed = false; probeStart = 0; }
+                if (ddaProducing || wgcProducing)
+                {
+                    staticConfirmed = false;
+                    movingConfirmed = false;
+                    probeStart = 0;
+                }
 
                 Source want;
                 if (!ladder)
@@ -233,6 +246,12 @@ public sealed class HybridBackend : CaptureBackendBase
                     {
                         want = idleSrc;
                     }
+                    else if (movingConfirmed)
+                    {
+                        // held until a cheap path delivers again, which is what clears the
+                        // verdict; tearing GDI back down is left to RecoverMs below
+                        want = Source.Gdi;
+                    }
                     else
                     {
                         // Two cheap blits a few hundred ms apart, rather than starting the
@@ -252,7 +271,8 @@ public sealed class HybridBackend : CaptureBackendBase
 
                             if (moving)
                             {
-                                want = Source.Gdi;      // the cheap path really is starved
+                                movingConfirmed = true; // the cheap path really is starved
+                                want = Source.Gdi;
                                 ProbeLog.Log(Name, "экран меняется, а быстрый путь молчит — GDI");
                             }
                             else

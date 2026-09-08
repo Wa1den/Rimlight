@@ -46,6 +46,7 @@ public sealed class RimlightEngine : IDisposable
     volatile bool _frozen;
     volatile bool _relayout;
     volatile bool _restartCapture;
+    volatile bool _captureSuspended;
     string _pauseReason = "";
     long _sendHoldUntil;
 
@@ -87,6 +88,9 @@ public sealed class RimlightEngine : IDisposable
     public long FramesSkipped => _device.FramesSkipped;
     public long Reconnects => _device.Reconnects;
     public bool IsPaused => _paused;
+
+    /// <summary>Whether capture and the output thread are up at all, as against paused.</summary>
+    public bool IsRunning => _running;
 
     /// <summary>
     /// How old the picture was when it reached the wire. Measured from the present time
@@ -179,14 +183,57 @@ public sealed class RimlightEngine : IDisposable
     /// </summary>
     public void RestartCapture() => _restartCapture = true;
 
+    /// <summary>
+    /// Stands capture down while the display is off, and brings it back with the display.
+    ///
+    /// A blanked screen produces no composition, so every capture path starves at once and
+    /// the ladder spends the time hunting between dead sources: 3512 of one day's 3708
+    /// source switches fell inside 83 minutes of display-off, while nothing was going to
+    /// the strip at all. None of that has to be inferred, because the display state is
+    /// reported directly.
+    ///
+    /// The output thread keeps running, so the strip goes on getting what it was getting:
+    /// the black keepalive frame when the pause darkened it, or the held picture when the
+    /// user asked for the light to stay on. Applied on that thread rather than the
+    /// caller's, like <see cref="RestartCapture"/> and for the same reason - it waits on
+    /// the backend's frame signal, and disposing the handle from under a waiter is a crash.
+    /// </summary>
+    public void SuspendCapture(bool on) => _captureSuspended = on;
+
+    void ApplyCaptureSuspend()
+    {
+        if (_captureSuspended && _capture != null)
+        {
+            _capture.Stop();
+            _capture.Dispose();
+            _capture = null;
+            ProbeLog.Log(Loc.P("движок", "engine"),
+                         Loc.P("захват остановлен: экран выключен", "capture stopped: display off"));
+        }
+        else if (!_captureSuspended && _capture == null && _monitor != null)
+        {
+            _capture = NewCapture(_cfg);
+            _capture.Start(_monitor);
+            ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("захват возобновлён", "capture resumed"));
+        }
+    }
+
     void ApplyCaptureRestart()
     {
         if (_monitor == null) return;
 
         _capture?.Stop();
         _capture?.Dispose();
-        _capture = NewCapture(_cfg);
-        _capture.Start(_monitor);
+        _capture = null;
+
+        // с погашенным экраном новый метод не поднимается: его вернёт ApplyCaptureSuspend,
+        // когда экран включат, и уже с этой настройкой
+        if (!_captureSuspended)
+        {
+            _capture = NewCapture(_cfg);
+            _capture.Start(_monitor);
+        }
+
         ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("метод захвата: ", "capture method: ") + _cfg.CaptureMode);
     }
 
@@ -268,6 +315,10 @@ public sealed class RimlightEngine : IDisposable
         _device.Open(cfg.PortName, cfg.BaudRate, _zones.Length);
 
         _restartCapture = false;
+
+        // питание сообщит своё состояние сразу после старта; до того захват работает
+        _captureSuspended = false;
+
         FrameAgeMs = FrameAgeMaxMs = FrameAgeP99Ms = 0;
         StageGrabMs = StageReduceMs = StageRelayMs = StageOutMs = StageWriteMs = 0;
         _running = true;
@@ -349,6 +400,8 @@ public sealed class RimlightEngine : IDisposable
                 _restartCapture = false;
                 ApplyCaptureRestart();
             }
+
+            ApplyCaptureSuspend();
 
             if (!ReferenceEquals(waitTarget, _capture))
             {
@@ -759,7 +812,11 @@ public sealed class RimlightEngine : IDisposable
                      on ? Loc.P("кадр удержан", "picture held") : Loc.P("кадр отпущен", "picture released"));
     }
 
-    public void Stop()
+    /// <param name="blackout">
+    /// Darken the strip whatever the "off on exit" setting says. That setting is about
+    /// leaving the program; the Stop button is a request for the strip to go dark now.
+    /// </param>
+    public void Stop(bool blackout = false)
     {
         if (!_running && _capture == null) return;
 
@@ -767,13 +824,16 @@ public sealed class RimlightEngine : IDisposable
         _outputThread?.Join(2000);
         _outputThread = null;
 
-        if (_cfg.OffOnExit) _device.Blackout();
+        if (blackout || _cfg.OffOnExit) _device.Blackout();
         _device.Close();
         _publisher.Close();
 
         _capture?.Stop();
         _capture?.Dispose();
         _capture = null;
+
+        // the strip is dark, and the preview goes on showing the last frame otherwise
+        lock (_previewLock) Array.Clear(_preview);
 
         ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("стоп", "stopped"));
     }

@@ -234,8 +234,16 @@ public partial class MainWindow : Window
             state.DisplayOff && _cfg.OffOnDisplayOff ? Loc.P("экран выключен", "display off") :
             null;
 
-        // Экран погашен, а гасить ленту не просили: захват отдаёт кадры и дальше, но в
-        // них чернота, и лента гасла. Держим последний кадр.
+        // Движок, остановленный кнопкой, событие питания не поднимает и не гасит: гасить
+        // нечего, а порт закрыт.
+        if (!_engine.IsRunning) return;
+
+        // Погашенный экран не отдаёт композицию вообще, поэтому захват на это время
+        // снимается: голодать и перебирать источники впустую незачем.
+        _engine.SuspendCapture(state.DisplayOff);
+
+        // Экран погашен, а гасить ленту не просили: держим последний кадр. Выходной поток
+        // продолжает слать его сам, захват для этого не нужен.
         _engine.Freeze(state.DisplayOff && !_cfg.OffOnDisplayOff);
 
         if (reason != null) _engine.Pause(reason);
@@ -248,6 +256,10 @@ public partial class MainWindow : Window
     {
         _outputWanted = true;
 
+        // Тем же путём, что и запуск программы: заново читаются экран и порт, поднимается
+        // захват.
+        if (!_engine.IsRunning) Restart();
+
         // Тем же путём, что и возврат из сна: если ленту гасит питание, кнопка её не
         // зажигает.
         ApplyPowerState(_power.State);
@@ -257,10 +269,19 @@ public partial class MainWindow : Window
             : Loc.T("bar.started"), StatusHoldMs);
     }
 
+    /// <summary>
+    /// Takes capture down along with the colour, rather than darkening the strip and
+    /// leaving the screen being read.
+    ///
+    /// Stopping the output used to pause the send and nothing else: Desktop Duplication,
+    /// the GPU reduction and the frame bus went on running at full rate, so the button
+    /// darkened the strip and left the capture load where it was. Anything attached to the
+    /// frame bus loses the picture until Start.
+    /// </summary>
     void StopOutput()
     {
         _outputWanted = false;
-        _engine.Pause(Loc.T("bar.byhand"));
+        _engine.Stop(blackout: true);
         Say(Loc.T("bar.stopped"), StatusHoldMs);
     }
 
@@ -1026,6 +1047,10 @@ public partial class MainWindow : Window
 
         _cfg.PortName = string.IsNullOrWhiteSpace(_portBox.Text) ? "COM4" : _portBox.Text.Trim();
 
+        // Ручной стоп переживает смену порта и экрана: выбор запоминается, а движок ждёт
+        // нажатия «Старт».
+        if (!_outputWanted) return;
+
         _engine.Start(_cfg);
         RebuildPreview();
     }
@@ -1478,7 +1503,8 @@ public partial class MainWindow : Window
 
         // Остановленный вывод показывается прежде ошибки порта: лента погашена нажатием
         // кнопки, и порт в этот момент ни при чём.
-        if (_engine.IsPaused) SayFromTick(string.Format(Loc.T("bar.paused"), _engine.PauseReason));
+        if (!_outputWanted) SayFromTick(string.Format(Loc.T("bar.paused"), Loc.T("bar.byhand")));
+        else if (_engine.IsPaused) SayFromTick(string.Format(Loc.T("bar.paused"), _engine.PauseReason));
         else if (_engine.DeviceHasError) SayFromTick(Loc.T("warn.port"), warn: true);
         else SayFromTick(string.Format(Loc.T("bar.running"), Rate(ShownRate())));
 

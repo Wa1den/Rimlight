@@ -124,6 +124,30 @@ public abstract class CaptureBackendBase : ICaptureBackend
         _frameSignal.Set();
     }
 
+    /// <summary>
+    /// Drops the published frame, so a restart cannot hand out the picture the previous
+    /// session left behind.
+    ///
+    /// A consumer stops reading a backend the moment the ladder switches away from it,
+    /// while the backend goes on publishing until it is stopped a couple of seconds later.
+    /// Those last frames stay in the buffer with a version the consumer has never seen, so
+    /// the first read after the next start returned them: measured at 1 593 842 ms of
+    /// frame age on GDI, a picture 26 minutes old sent to the strip for 41 ms before the
+    /// first real frame of the new session replaced it.
+    ///
+    /// The version counter carries on rather than resetting - a consumer holding a higher
+    /// number would ignore everything published afterwards.
+    /// </summary>
+    void ForgetImage()
+    {
+        lock (_imageLock)
+        {
+            _image = Array.Empty<byte>();
+            _imgW = _imgH = _imgStride = 0;
+            _imageStamps = default;
+        }
+    }
+
     /// <summary>Copies the newest frame out if it is newer than <paramref name="version"/>.</summary>
     public bool TryGetImage(ref byte[] dest, ref long version, out int width, out int height, out int stride) =>
         TryGetImage(ref dest, ref version, out width, out height, out stride, out _);
@@ -160,6 +184,7 @@ public abstract class CaptureBackendBase : ICaptureBackend
         Monitor = monitor;
         _running = true;
         Metrics.Reset(BackendStatus.Starting, "запуск");
+        ForgetImage();
         ProbeLog.Log(Name, $"старт, монитор {monitor.DeviceName} {monitor.Width}x{monitor.Height}");
 
         _thread = new Thread(ThreadBody)

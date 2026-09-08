@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "31";
+    const string Version = "32";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -265,7 +265,9 @@ public static class Loc
         ["main.diag.head"] = "Статистика и лог",
         ["main.stats.detailed"] = "Подробная статистика",
         ["main.stats.detailed.note"] = "Данные о задержках с разделением по этапам. Пишутся и в лог, если он включён.",
-        ["main.stats.note"] = "Блок статистики под превью: метод захвата, частота кадров, состояние порта.",
+        ["main.stats.note"] = "Блок статистики: метод захвата, частота кадров, состояние порта.",
+        ["main.stats.place"] = "Отображать статистику под схемой",
+        ["main.stats.place.note"] = "Под схемой зон статистика скрывается вместе с превью. Без галки она выводится внизу этого раздела и видна при узком окне.",
         ["nav.preview"] = "Показывать превью",
         ["main.tray"] = "Сворачивать в трей",
         ["main.autostart"] = "Запускать вместе с Windows",
@@ -463,7 +465,9 @@ public static class Loc
         ["main.diag.head"] = "Statistics and log",
         ["main.stats.detailed"] = "Detailed statistics",
         ["main.stats.detailed.note"] = "Latency figures broken down by stage. Written to the log too, when it is on.",
-        ["main.stats.note"] = "The statistics block under the preview: capture method, frame rates, port state.",
+        ["main.stats.note"] = "The statistics block: capture method, frame rates, port state.",
+        ["main.stats.place"] = "Show statistics under the zone map",
+        ["main.stats.place.note"] = "Under the map the statistics are hidden along with the preview. Unticked, they go to the foot of this section and stay visible in the narrow window.",
         ["nav.preview"] = "Show preview",
         ["main.tray"] = "Minimise to tray",
         ["main.autostart"] = "Start with Windows",

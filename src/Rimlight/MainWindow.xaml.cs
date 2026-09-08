@@ -419,6 +419,33 @@ public partial class MainWindow : Window
     /// two assignments to work at all, and it recomputes the height along with the width.
     /// A width of its own also means the window cannot be dragged wider into empty space.
     /// </summary>
+    /// <summary>
+    /// Card at the foot of the Main section that holds the statistics when they are not
+    /// under the zone map. Rebuilt with the section, so nothing may hold on to it.
+    /// </summary>
+    Border? _statsHost;
+
+    /// <summary>
+    /// Moves the statistics grid between its two places.
+    ///
+    /// One grid rather than a copy in each place: its rows are built once at startup and
+    /// the refresh writes into them twenty times a second, and two sets would double both
+    /// halves of that for the one that is not on screen.
+    /// </summary>
+    void PlaceStats()
+    {
+        Border? host = _cfg.StatsUnderPreview ? StatsCard : _statsHost;
+        if (host == null) return;
+
+        if (StatsGrid.Parent is Border old)
+        {
+            if (ReferenceEquals(old, host)) return;
+            old.Child = null;
+        }
+
+        host.Child = StatsGrid;
+    }
+
     void ApplyPreviewLayout()
     {
         if (_cfg.ShowPreview)
@@ -603,12 +630,21 @@ public partial class MainWindow : Window
             // detail follows the block it belongs to, the way "start minimised" follows
             // the tray checkbox
             CheckBox detailed = null!;
+            CheckBox placed = null!;
             panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v =>
             {
                 _cfg.ShowStats = v;
                 detailed.IsEnabled = v;
+                placed.IsEnabled = v;
                 if (!v) detailed.IsChecked = false;
             }, Loc.T("main.stats.note")));
+
+            panel.Children.Add(Check(Loc.T("main.stats.place"), _cfg.StatsUnderPreview, v =>
+            {
+                _cfg.StatsUnderPreview = v;
+                PlaceStats();
+            }, Loc.T("main.stats.place.note"), out placed));
+            placed.IsEnabled = _cfg.ShowStats;
 
             panel.Children.Add(Check(Loc.T("main.stats.detailed"), _cfg.DetailedStats,
                 v => _cfg.DetailedStats = v, Loc.T("main.stats.detailed.note"), out detailed));
@@ -643,6 +679,16 @@ public partial class MainWindow : Window
             pathText.Inlines.Add(link);
             pathText.Margin = new Thickness(0, 8, 0, 0);
             panel.Children.Add(pathText);
+
+            // Второй дом статистики. Карточка строится всегда: раздел пересобирается
+            // только при смене языка, а галку переключают когда угодно.
+            _statsHost = new Border
+            {
+                Style = (Style)FindResource("Card"),
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+            panel.Children.Add(_statsHost);
+            PlaceStats();
         });
 
         AddTab(Loc.T("tab.device"), "", panel =>
@@ -1496,8 +1542,12 @@ public partial class MainWindow : Window
                 : string.Format(Loc.T("stats.current.free"), amps, _cfg.FullWhiteAmps);
         }
 
-        // the toggle applies live; the block only exists while the preview column does
-        StatsCard.Visibility = _cfg.ShowStats ? Visibility.Visible : Visibility.Collapsed;
+        // обе галки применяются живо, поэтому видимость обеих карточек ставится каждый тик
+        StatsCard.Visibility = _cfg.ShowStats && _cfg.StatsUnderPreview
+            ? Visibility.Visible : Visibility.Collapsed;
+        if (_statsHost != null)
+            _statsHost.Visibility = _cfg.ShowStats && !_cfg.StatsUnderPreview
+                ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateCropStatus();
 

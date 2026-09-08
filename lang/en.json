@@ -26,7 +26,9 @@
   "main.diag.head": "Statistics and log",
   "main.stats.detailed": "Detailed statistics",
   "main.stats.detailed.note": "Latency figures broken down by stage. Written to the log too, when it is on.",
-  "main.stats.note": "The statistics block under the preview: capture method, frame rates, port state.",
+  "main.stats.note": "The statistics block: capture method, frame rates, port state.",
+  "main.stats.place": "Show statistics under the zone map",
+  "main.stats.place.note": "Under the map the statistics are hidden along with the preview. Unticked, they go to the foot of this section and stay visible in the narrow window.",
   "nav.preview": "Show preview",
   "main.tray": "Minimise to tray",
   "main.autostart": "Start with Windows",
@@ -182,5 +184,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "31"
+  "_version": "32"
 }

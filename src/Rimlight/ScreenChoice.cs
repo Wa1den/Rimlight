@@ -37,6 +37,42 @@ public static class ScreenChoice
             ?? monitors.FirstOrDefault();
     }
 
+    /// <summary>
+    /// The same screen or none, for a display configuration that changed under a running
+    /// capture.
+    ///
+    /// <see cref="Find"/> falls back to the primary screen, which is what a start-up needs
+    /// and the wrong answer here: it would move the light onto another panel and size the
+    /// zones for it without anybody asking. The one screen left attached is an exception,
+    /// because settings written for a monitor whose EDID gave no model have nothing but
+    /// the device name to go on, and the device name is exactly what a driver restart
+    /// renumbers.
+    /// </summary>
+    public static MonitorInfo? FindSame(IReadOnlyList<MonitorInfo> monitors, string deviceName, string model)
+    {
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            var sameModel = monitors.Where(m => m.Model == model).ToList();
+
+            // ни одного экрана этой модели: панель отключили, а не переименовали
+            if (sameModel.Count == 0) return null;
+            if (sameModel.Count == 1) return sameModel[0];
+
+            // два экрана одной модели различает только имя устройства, и когда оно
+            // сменилось, сказать, который из них тот самый, нечем
+            return sameModel.FirstOrDefault(m => m.DeviceName == deviceName);
+        }
+
+        return monitors.FirstOrDefault(m => m.DeviceName == deviceName)
+            ?? (monitors.Count == 1 ? monitors[0] : null);
+    }
+
+    /// <summary>Whether capture can carry on untouched: same panel, same handle, same size.</summary>
+    public static bool Same(MonitorInfo? a, MonitorInfo? b) =>
+        a != null && b != null &&
+        a.DeviceName == b.DeviceName && a.Handle == b.Handle &&
+        a.Width == b.Width && a.Height == b.Height;
+
     /// <summary>The same against a fresh enumeration, for callers that hold no list.</summary>
     public static MonitorInfo? Find(string deviceName, string model) =>
         Find(Native.EnumerateMonitors(), deviceName, model);

@@ -52,6 +52,41 @@ public sealed class HybridBackend : CaptureBackendBase
     const int ProbeMs = 700;
 
     /// <summary>
+    /// How long to wait before trying again to start a backend whose thread died on the
+    /// spot, and how far that wait is allowed to grow.
+    ///
+    /// A backend that fails in its first lines leaves <c>IsRunning</c> false by the next
+    /// pass, and the ladder started it again every pass - 4 ms apart. After a display
+    /// driver restart renamed the screen out from under GDI, that put 42 900 start lines
+    /// in the log in eleven minutes and swelled the file to 38 MB, and none of them could
+    /// have succeeded: the device name they asked for no longer existed.
+    /// </summary>
+    const int RetryMs = 1000;
+    const int RetryMaxMs = 15000;
+
+    /// <summary>Backs a repeatedly failing start off instead of retrying it every pass.</summary>
+    sealed class StartGate
+    {
+        long _nextTicks;
+        int _waitMs = RetryMs;
+
+        public bool Ready(long now) => now >= _nextTicks;
+
+        public void Attempted(long now)
+        {
+            _nextTicks = now + _waitMs;
+            _waitMs = Math.Min(_waitMs * 2, RetryMaxMs);
+        }
+
+        /// <summary>Called when the backend delivers, which is the only proof it is up.</summary>
+        public void Reset()
+        {
+            _nextTicks = 0;
+            _waitMs = RetryMs;
+        }
+    }
+
+    /// <summary>
     /// How long DDA must be silent before WGC is brought up to fill the gap.
     ///
     /// Longer than <see cref="AliveMs"/> so the probe below has time to answer whether the
@@ -121,6 +156,8 @@ public sealed class HybridBackend : CaptureBackendBase
         if (gdiAlwaysOn) _gdi.Start(Monitor);
 
         long lastDdaFrames = -1, lastWgcFrames = -1, lastGdiFrames = -1;
+        var wgcGate = new StartGate();
+        var gdiGate = new StartGate();
         long lastDdaTicks = 0, lastWgcTicks = 0;
 
         // "no new frames" from DDA means the desktop image did not change, which is the
@@ -182,9 +219,10 @@ public sealed class HybridBackend : CaptureBackendBase
                 // screen known to be changing. Absence of frames on its own is what a
                 // still desktop looks like.
                 if (wgcLazy && !_wgc.IsRunning && !staticConfirmed
-                    && lastDdaTicks != 0 && now - lastDdaTicks > WgcWakeMs)
+                    && lastDdaTicks != 0 && now - lastDdaTicks > WgcWakeMs && wgcGate.Ready(now))
                 {
                     lastWgcFrames = -1;   // its counter restarts from zero
+                    wgcGate.Attempted(now);
                     _wgc.Start(Monitor);
                 }
                 else if (wgcLazy && _wgc.IsRunning && ddaProducingPrev && now - lastDdaTicks <= AliveMs
@@ -192,7 +230,7 @@ public sealed class HybridBackend : CaptureBackendBase
                     _wgc.Stop();
 
                 bool wgcNew = ws.Frames > 0 && ws.Frames != lastWgcFrames;
-                if (wgcNew) { lastWgcFrames = ws.Frames; lastWgcTicks = now; lastWgcPoll = now; }
+                if (wgcNew) { lastWgcFrames = ws.Frames; lastWgcTicks = now; lastWgcPoll = now; wgcGate.Reset(); }
                 if (ws.Timeouts != lastWgcTimeouts) { lastWgcTimeouts = ws.Timeouts; lastWgcPoll = now; }
 
                 bool ddaProducing = UseDda && lastDdaTicks != 0 && now - lastDdaTicks <= AliveMs;
@@ -207,6 +245,7 @@ public sealed class HybridBackend : CaptureBackendBase
                 if (_gdi.IsRunning)
                 {
                     var probe = _gdi.Metrics.Snapshot();
+                    if (probe.Frames > 0) gdiGate.Reset();
                     if (probe.R != gr || probe.G != gg || probe.B != gb)
                     {
                         gr = probe.R; gg = probe.G; gb = probe.B;
@@ -290,9 +329,10 @@ public sealed class HybridBackend : CaptureBackendBase
                 if (want == Source.Gdi)
                 {
                     cheapHealthySince = 0;
-                    if (!_gdi.IsRunning && UseGdi)
+                    if (!_gdi.IsRunning && UseGdi && gdiGate.Ready(now))
                     {
                         lastGdiFrames = -1;   // its counter restarts from zero
+                        gdiGate.Attempted(now);
                         _gdi.Start(Monitor);
                     }
                 }

@@ -145,7 +145,10 @@ public sealed class DdaBackend : CaptureBackendBase
 
         if (chosenAdapter == null || chosenOutput == null)
         {
+            // В лог это не попадало: рос счётчик ошибок, а почему выход не нашёлся, из
+            // файла было не видно.
             Metrics.NoteError($"выход {Monitor.DeviceName} не найден");
+            ProbeLog.LogStatusChange(Name, BackendStatus.Error, $"выход {Monitor.DeviceName} не найден");
             Sleep(1000);
             return;
         }

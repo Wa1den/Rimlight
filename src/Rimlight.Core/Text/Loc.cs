@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "35";
+    const string Version = "36";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -411,6 +411,7 @@ public static class Loc
         ["stats.notrunning"] = "захват не запущен",
 
         ["warn.port"] = "Не удалось открыть порт. Проверьте имя порта и что он не занят другой программой.",
+        ["warn.screen"] = "Экран для захвата не найден. Вывод остановлен до его появления.",
         ["warn.count"] = "Сумма диодов {0} должна совпадать со значением NUM_LEDS в прошивке, иначе изображение смещается вдоль ленты.",
 
         ["dialog.filter"] = "Настройки Rimlight (*.json)|*.json",
@@ -615,6 +616,7 @@ public static class Loc
         ["stats.notrunning"] = "capture not running",
 
         ["warn.port"] = "Could not open the port. Check the port name and that no other program is using it.",
+        ["warn.screen"] = "The screen to capture was not found. Output is stopped until it is back.",
         ["warn.count"] = "The LED total {0} must match NUM_LEDS in the firmware, otherwise the image is shifted along the strip.",
 
         ["dialog.filter"] = "Rimlight settings (*.json)|*.json",

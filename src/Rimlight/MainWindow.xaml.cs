@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Rimlight.Capture;
@@ -201,6 +202,7 @@ public partial class MainWindow : Window
         CancelButton.Click += (_, _) => CancelChanges();
 
         OutputButton.Click += (_, _) => { if (_outputWanted) StopOutput(); else StartOutput(); };
+
 
         // a Windows shutdown must not be cancelled into the tray
         Application.Current.SessionEnding += (_, _) => _reallyClosing = true;
@@ -449,11 +451,158 @@ public partial class MainWindow : Window
         host.Child = StatsGrid;
     }
 
+    Image? _screenImage;
+    UIElement? _screenToggle;
+    byte[] _screenBuffer = Array.Empty<byte>();
+    long _screenVersion;
+
+    Button? _aspectButton;
+
+    /// <summary>
+    /// The two controls of the preview itself, under it rather than on a settings page:
+    /// they are ways of looking at the layout, used while working on it. Rebuilt whole on a
+    /// language change, because their explanations live inside the elements and there is
+    /// nothing to reassign.
+    /// </summary>
+    void BuildBarControls()
+    {
+        if (_aspectButton != null) StatusBar.Children.Remove(_aspectButton);
+        if (_screenToggle != null) StatusBar.Children.Remove(_screenToggle);
+
+        _aspectButton = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = "",
+                FontFamily = (FontFamily)FindResource("Icons"),
+                FontSize = 12
+            },
+            Padding = new Thickness(9, 4, 9, 4),
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+
+            // всплывающая подсказка наследует шрифт значка, в котором букв нет
+            ToolTip = new TextBlock
+            {
+                Text = Loc.T("bar.aspect"),
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 320,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 12
+            }
+        };
+        _aspectButton.Click += (_, _) => FitPreviewAspect();
+
+        _screenToggle = Check(Loc.T("bar.screen"), _cfg.ShowScreen, v =>
+        {
+            _cfg.ShowScreen = v;
+            UpdateScreenPreview();
+        }, Loc.T("bar.screen.note"));
+
+        if (_screenToggle is FrameworkElement fe)
+        {
+            fe.Margin = new Thickness(12, 0, 0, 0);
+            fe.VerticalAlignment = VerticalAlignment.Center;
+
+            // A Fluent checkbox measures taller than the button beside it, so while the
+            // preview is shown it sets the height of the whole bar - and hiding it with the
+            // preview dropped the button by those few pixels. The bar keeps the tallest
+            // height it has ever needed. MinHeight rather than Height: the button lives
+            // inside the bar, so assigning its measured height back to the bar shrinks the
+            // button, which shrinks the bar again, and the two collapse together.
+            fe.SizeChanged += (_, _) =>
+            {
+                if (fe.Visibility == Visibility.Visible)
+                    StatusBar.MinHeight = Math.Max(StatusBar.MinHeight, fe.ActualHeight);
+            };
+        }
+
+        DockPanel.SetDock(_aspectButton, Dock.Right);
+        DockPanel.SetDock(_screenToggle, Dock.Right);
+
+        // Кнопка вставляется первой и потому оказывается у самого края: DockPanel отдаёт
+        // правый край тому, кто пришёл раньше. Оба - перед строкой статуса, которая как
+        // последний ребёнок занимает остаток полосы.
+        StatusBar.Children.Insert(StatusBar.Children.Count - 1, _aspectButton);
+        StatusBar.Children.Insert(StatusBar.Children.Count - 1, _screenToggle);
+
+        ShowBarControls(_cfg.ShowPreview);
+    }
+
+    void ShowBarControls(bool on)
+    {
+        var v = on ? Visibility.Visible : Visibility.Collapsed;
+        if (_screenToggle != null) _screenToggle.Visibility = v;
+        if (_aspectButton != null) _aspectButton.Visibility = v;
+    }
+
+    /// <summary>
+    /// Changes the window width so the preview holds the screen's own proportions.
+    ///
+    /// Width only: the height is where the settings page lives, and stretching it to fit a
+    /// 21:9 screen would leave the page short. The two left columns are fixed, so a change
+    /// in window width reaches the preview one for one.
+    /// </summary>
+    void FitPreviewAspect()
+    {
+        var monitor = _engine.Monitor;
+        if (monitor == null || monitor.Height <= 0 || !_cfg.ShowPreview) return;
+
+        double cw = PreviewCanvas.ActualWidth, ch = PreviewCanvas.ActualHeight;
+        if (cw < 10 || ch < 10) return;
+
+        if (WindowState != WindowState.Normal) WindowState = WindowState.Normal;
+
+        double wanted = ch * monitor.Width / monitor.Height;
+
+        // не уже узкого предела и не шире рабочей области: за её краем окно не подвинуть
+        double max = Math.Max(WideMinWidth, SystemParameters.WorkArea.Width);
+        Width = Math.Clamp(ActualWidth + (wanted - cw), WideMinWidth, max);
+
+        // чтобы возврат из скрытого превью пришёл к этой же ширине
+        _wideWidth = Width;
+    }
+
+    /// <summary>
+    /// Puts the newest reduced frame under the zone ring.
+    ///
+    /// The frame is a couple of hundred pixels across, so building an image out of it on
+    /// the UI tick costs little, and a tick where nothing new arrived does nothing at all.
+    /// </summary>
+    void UpdateScreenPreview()
+    {
+        bool on = _cfg.ShowScreen && _cfg.ShowPreview;
+        _engine.ScreenWanted = on;
+
+        if (_screenImage == null) return;
+
+        if (!on || !_engine.IsRunning)
+        {
+            // ничего не захватывается, а застывший кадр читался бы как то, что на экране
+            // сейчас
+            if (_screenImage.Source == null) return;
+
+            _screenImage.Source = null;
+            _screenVersion = 0;
+            return;
+        }
+
+        if (!_engine.TryTakeScreen(ref _screenBuffer, ref _screenVersion, out int w, out int h, out int stride))
+            return;
+
+        if (w <= 0 || h <= 0 || stride <= 0) return;
+
+        var frame = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, _screenBuffer, stride);
+        frame.Freeze();   // построен не в потоке отрисовки, поэтому только замороженным
+        _screenImage.Source = frame;
+    }
+
     void ApplyPreviewLayout()
     {
         if (_cfg.ShowPreview)
         {
             RightColumn.Visibility = Visibility.Visible;
+            ShowBarControls(true);
             MaxWidth = double.PositiveInfinity;
             MinWidth = WideMinWidth;
             if (IsLoaded && WindowState == WindowState.Normal)
@@ -471,6 +620,7 @@ public partial class MainWindow : Window
         double narrow = NarrowWidth();
 
         RightColumn.Visibility = Visibility.Collapsed;
+        ShowBarControls(false);
         MinWidth = 0;
         Width = narrow;
         MinWidth = MaxWidth = narrow;
@@ -583,6 +733,7 @@ public partial class MainWindow : Window
         _pages.Clear();
         PreviewToggle.Content = Loc.T("nav.preview");
         PreviewToggle.IsChecked = _cfg.ShowPreview;    // guarded by _rebuildingUi
+        BuildBarControls();
 
         AddTab(Loc.T("tab.main"), "", panel =>
         {
@@ -1341,6 +1492,10 @@ public partial class MainWindow : Window
         _previewShapes.Clear();
         _previewLabels.Clear();
 
+        // первым ребёнком, чтобы кольцо зон рисовалось поверх кадра
+        _screenImage = new Image { Stretch = Stretch.Fill };
+        PreviewCanvas.Children.Add(_screenImage);
+
         // a soft theme-coloured outline keeps the grid readable while the cells are dark;
         // the first LED is rung in the accent colour instead of shouting in white
         var accent = TryFindResource("AccentFillColorDefaultBrush") as Brush ?? Brushes.White;
@@ -1354,7 +1509,7 @@ public partial class MainWindow : Window
                 Fill = Brushes.Black,
                 RadiusX = 3,
                 RadiusY = 3,
-                Stroke = first ? accent : Res("PanelStroke"),
+                Stroke = first ? accent : Res("CellStroke"),
                 StrokeThickness = first ? 2 : 1
             };
             PreviewCanvas.Children.Add(r);
@@ -1389,6 +1544,21 @@ public partial class MainWindow : Window
     /// <summary>Thickness of the preview bands, in pixels, independent of window size.</summary>
     const double PreviewBandPx = 46;
 
+    /// <summary>
+    /// Whole pixels for a shape whose outline is one pixel wide.
+    ///
+    /// A one-pixel stroke is centred on the edge, so at a fractional position it covers
+    /// half of each neighbouring row and is drawn as two grey rows instead of one line.
+    /// </summary>
+    static double Crisp(double v) => Math.Max(1, Math.Round(v));
+
+    /// <summary>Puts a shape on whole pixels, its outline half a pixel inside them.</summary>
+    static void Snap(UIElement e, double x, double y)
+    {
+        Canvas.SetLeft(e, Math.Round(x) + 0.5);
+        Canvas.SetTop(e, Math.Round(y) + 0.5);
+    }
+
     void LayoutPreview()
     {
         double cw = PreviewCanvas.ActualWidth, ch = PreviewCanvas.ActualHeight;
@@ -1401,6 +1571,22 @@ public partial class MainWindow : Window
         // the preview shows strip order and colour, not the sampling depth to scale.
         const double band = PreviewBandPx;
 
+        // во весь холст, а не внутрь кольца: тогда точка кадра лежит ровно под той зоной,
+        // которая с неё читает
+        if (_screenImage != null)
+        {
+            Canvas.SetLeft(_screenImage, 0);
+            Canvas.SetTop(_screenImage, 0);
+            _screenImage.Width = cw;
+            _screenImage.Height = ch;
+        }
+
+        // Радиус берётся у карточки, в которой холст лежит: одно число на оба, и скругление
+        // не разъедется, если карточку когда-нибудь перерисуют. CornerRadius бордюра сам по
+        // себе детей не режет, поэтому холсту задаётся Clip.
+        double radius = PreviewCanvas.Parent is Border card ? card.CornerRadius.TopLeft : 0;
+        PreviewCanvas.Clip = new RectangleGeometry(new Rect(0, 0, cw, ch), radius, radius);
+
         var zones = _engine.Zones;
         for (int i = 0; i < _previewShapes.Count && i < zones.Length; i++)
         {
@@ -1409,17 +1595,15 @@ public partial class MainWindow : Window
 
             if (z.Side is Side.Top or Side.Bottom)
             {
-                r.Width = Math.Max(2, (z.X1 - z.X0) * cw - 2);
+                r.Width = Crisp(Math.Max(2, (z.X1 - z.X0) * cw - 2));
                 r.Height = band;
-                Canvas.SetLeft(r, z.X0 * cw);
-                Canvas.SetTop(r, z.Side == Side.Top ? 0 : ch - band);
+                Snap(r, z.X0 * cw, z.Side == Side.Top ? 0 : ch - band);
             }
             else
             {
                 r.Width = band;
-                r.Height = Math.Max(2, (z.Y1 - z.Y0) * ch - 2);
-                Canvas.SetLeft(r, z.Side == Side.Left ? 0 : cw - band);
-                Canvas.SetTop(r, z.Y0 * ch);
+                r.Height = Crisp(Math.Max(2, (z.Y1 - z.Y0) * ch - 2));
+                Snap(r, z.Side == Side.Left ? 0 : cw - band, z.Y0 * ch);
             }
         }
 
@@ -1460,6 +1644,7 @@ public partial class MainWindow : Window
         }
 
         LayoutPreview();
+        UpdateScreenPreview();
 
         if (_previewColors.Length > 0)
         {

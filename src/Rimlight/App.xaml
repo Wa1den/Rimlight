@@ -12,6 +12,11 @@
         <SolidColorBrush x:Key="Panel" Color="{DynamicResource CardBackgroundFillColorDefault}" />
         <SolidColorBrush x:Key="PanelStroke" Color="{DynamicResource CardStrokeColorDefault}" />
 
+        <!-- Outline of a preview cell. Lighter than PanelStroke, which is meant for a card
+             edge against the window background: over the captured frame and over the LED
+             colours themselves that one is too close to what it lies on to be seen. -->
+        <SolidColorBrush x:Key="CellStroke" Color="{DynamicResource ControlStrokeColorSecondary}" />
+
         <FontFamily x:Key="Icons">Segoe Fluent Icons,Segoe MDL2 Assets</FontFamily>
     </Application.Resources>
 </Application>

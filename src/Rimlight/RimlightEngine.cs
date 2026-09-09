@@ -488,6 +488,10 @@ public sealed class RimlightEngine : IDisposable
                 // настройке, а границы полос ищутся по резкому краю.
                 _filter.Apply(_cfg.Sharpness, _image, w, h, stride);
 
+                // после фильтра и до выборки: окну показывается ровно тот кадр, с которого
+                // берутся цвета зон
+                if (ScreenWanted) KeepScreen(_image, w, h, stride);
+
                 ZoneSampler.Sample(_image, w, h, stride, _sampleZones, _sampled);
                 everSampled = true;
                 framesThisWindow++;
@@ -741,6 +745,52 @@ public sealed class RimlightEngine : IDisposable
         {
             if (dest.Length >= _preview.Length && _preview.Length > 0)
                 Buffer.BlockCopy(_preview, 0, dest, 0, _preview.Length);
+        }
+    }
+
+    /// <summary>
+    /// Whether the reduced frame is kept for the window to draw. Off by default: it is a
+    /// copy of the frame on every output tick, and nobody is looking at it most of the time.
+    /// </summary>
+    public bool ScreenWanted { get; set; }
+
+    readonly object _screenLock = new();
+    byte[] _screen = Array.Empty<byte>();
+    int _screenW, _screenH, _screenStride;
+    long _screenVersion;
+
+    /// <summary>
+    /// Copies the newest reduced frame out if it is newer than <paramref name="version"/>.
+    ///
+    /// The frame handed over is the one the zones are sampled from, blur or sharpening
+    /// already applied, so what the preview shows is what the colours were taken from
+    /// rather than a second picture of the same screen.
+    /// </summary>
+    public bool TryTakeScreen(ref byte[] dest, ref long version, out int w, out int h, out int stride)
+    {
+        lock (_screenLock)
+        {
+            w = _screenW; h = _screenH; stride = _screenStride;
+            if (_screenVersion == version || _screen.Length == 0) return false;
+
+            if (dest.Length != _screen.Length) dest = new byte[_screen.Length];
+            Buffer.BlockCopy(_screen, 0, dest, 0, _screen.Length);
+            version = _screenVersion;
+            return true;
+        }
+    }
+
+    void KeepScreen(byte[] src, int w, int h, int stride)
+    {
+        lock (_screenLock)
+        {
+            int need = h * stride;
+            if (need <= 0 || src.Length < need) return;
+
+            if (_screen.Length != need) _screen = new byte[need];
+            Buffer.BlockCopy(src, 0, _screen, 0, need);
+            _screenW = w; _screenH = h; _screenStride = stride;
+            _screenVersion++;
         }
     }
 

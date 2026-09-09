@@ -343,6 +343,13 @@ public sealed class RimlightConfig
     /// <summary>The zone preview panel; off shrinks the window to the settings column.</summary>
     public bool ShowPreview { get; set; } = true;
 
+    /// <summary>
+    /// Draws the captured frame inside the zone ring, so the preview shows what the
+    /// colours were taken from. Costs a copy of the reduced frame per output tick, which
+    /// is why it is off unless asked for.
+    /// </summary>
+    public bool ShowScreen { get; set; }
+
     /// <summary>The statistics block.</summary>
     public bool ShowStats { get; set; } = true;
 

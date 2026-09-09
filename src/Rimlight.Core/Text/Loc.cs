@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "33";
+    const string Version = "35";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -269,6 +269,9 @@ public static class Loc
         ["main.stats.place"] = "Отображать статистику под схемой",
         ["main.stats.place.note"] = "Под схемой зон статистика скрывается вместе с превью. Без галки она выводится внизу этого раздела и видна при узком окне.",
         ["nav.preview"] = "Показывать превью",
+        ["bar.aspect"] = "Восстановить соотношение сторон: подобрать ширину окна так, чтобы превью повторяло пропорции экрана. Высота не меняется.",
+        ["bar.screen"] = "Отображать данные с экрана",
+        ["bar.screen.note"] = "Кадр рисуется внутри кольца зон — тот самый, с которого берутся цвета, уже с расфокусом или резкостью. Требует запущенного вывода.",
         ["main.tray"] = "Сворачивать в трей",
         ["main.autostart"] = "Запускать вместе с Windows",
         ["main.log"] = "Писать лог",
@@ -470,6 +473,9 @@ public static class Loc
         ["main.stats.place"] = "Show statistics under the zone map",
         ["main.stats.place.note"] = "Under the map the statistics are hidden along with the preview. Unticked, they go to the foot of this section and stay visible in the narrow window.",
         ["nav.preview"] = "Show preview",
+        ["bar.aspect"] = "Restore the aspect ratio: set the window width so the preview keeps the proportions of the screen. The height is left alone.",
+        ["bar.screen"] = "Show screen contents",
+        ["bar.screen.note"] = "The frame is drawn inside the zone ring - the one the colours are taken from, blur or sharpening already applied. Requires the output to be running.",
         ["main.tray"] = "Minimise to tray",
         ["main.autostart"] = "Start with Windows",
         ["main.log"] = "Write log",

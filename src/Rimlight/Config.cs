@@ -343,8 +343,23 @@ public sealed class RimlightConfig
     /// <summary>The zone preview panel; off shrinks the window to the settings column.</summary>
     public bool ShowPreview { get; set; } = true;
 
-    /// <summary>The statistics block under the preview; only visible while the preview is.</summary>
+    /// <summary>
+    /// Draws the captured frame inside the zone ring, so the preview shows what the
+    /// colours were taken from. Costs a copy of the reduced frame per output tick, which
+    /// is why it is off unless asked for.
+    /// </summary>
+    public bool ShowScreen { get; set; }
+
+    /// <summary>The statistics block.</summary>
     public bool ShowStats { get; set; } = true;
+
+    /// <summary>
+    /// Where that block sits: under the zone map, or at the foot of the Main section.
+    ///
+    /// Under the map it is hidden along with the preview, which takes the numbers away in
+    /// exactly the narrow window someone watching them is likely to be using.
+    /// </summary>
+    public bool StatsUnderPreview { get; set; } = true;
 
     /// <summary>
     /// Adds the diagnostic rows - latency, its split by stage, the source breakdown - and

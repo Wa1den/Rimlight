@@ -50,7 +50,35 @@ public sealed class AdalightDevice : IDisposable
     /// moment the interface could be switched to English.
     /// </summary>
     public bool HasError { get; private set; }
-    public string Status { get; private set; } = Loc.P("не подключено", "not connected");
+
+    enum Link { NotConnected, Waiting, Ready, OpenFailed, Lost }
+
+    /// <summary>
+    /// State and the untranslatable half of the line - a port name or the message of an
+    /// exception - kept together in one object so a reader cannot pair a new state with
+    /// the previous detail. Written on the output thread, read on the UI thread.
+    /// </summary>
+    sealed record LinkStatus(Link State, string Detail = "");
+
+    volatile LinkStatus _link = new(Link.NotConnected);
+
+    /// <summary>
+    /// Composed on read rather than stored.
+    ///
+    /// A line built when the event happened kept the language of that moment. The opening
+    /// status is set once, before the interface language has even been loaded, so an
+    /// English session showed the Russian "не подключено"; and switching language while
+    /// the port was open left the old wording standing until the port was reopened.
+    /// </summary>
+    public string Status => _link.State switch
+    {
+        Link.Waiting => $"{_link.Detail}: " + Loc.P("жду загрузчик", "waiting for bootloader"),
+        Link.Ready => $"{_link.Detail} " + Loc.P("готов", "ready"),
+        Link.OpenFailed => Loc.P("ошибка открытия: ", "could not open: ") + _link.Detail,
+        Link.Lost => Loc.P("обрыв: ", "link lost: ") + _link.Detail,
+        _ => Loc.P("не подключено", "not connected")
+    };
+
     public long Reconnects { get; private set; }
     public long FramesSent { get; private set; }
     public long FramesSkipped { get; private set; }
@@ -175,7 +203,7 @@ public sealed class AdalightDevice : IDisposable
         }
         catch (Exception ex)
         {
-            Status = Loc.P("ошибка открытия: ", "could not open: ") + ex.Message;
+            _link = new(Link.OpenFailed, ex.Message);
             HasError = true;
 
             // retries run every couple of seconds; logging each one buries everything else
@@ -194,7 +222,7 @@ public sealed class AdalightDevice : IDisposable
         HasError = false;
         if (waitBootloader)
         {
-            Status = $"{portName}: " + Loc.P("жду загрузчик", "waiting for bootloader");
+            _link = new(Link.Waiting, portName);
             ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P($"открыт на {baud} бод, пауза {BootloaderWaitMs} мс на загрузчик", $"opened at {baud} baud, {BootloaderWaitMs} ms bootloader pause"));
             Thread.Sleep(BootloaderWaitMs);
         }
@@ -203,7 +231,7 @@ public sealed class AdalightDevice : IDisposable
             ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P($"переоткрыт под {ledCount} диодов", $"reopened for {ledCount} LEDs"));
         }
 
-        Status = $"{portName} " + Loc.P("готов", "ready");
+        _link = new(Link.Ready, portName);
         return true;
     }
 
@@ -282,7 +310,7 @@ public sealed class AdalightDevice : IDisposable
         }
         catch (Exception ex)
         {
-            Status = Loc.P("обрыв: ", "link lost: ") + ex.Message;
+            _link = new(Link.Lost, ex.Message);
             HasError = true;
             ProbeLog.Log(Loc.P("порт", "port"), Loc.P("запись не удалась: ", "write failed: ") + ex.Message);
             Close();
@@ -398,7 +426,7 @@ public sealed class AdalightDevice : IDisposable
             try { _port?.Close(); } catch { /* already gone */ }
             _port?.Dispose();
             _port = null;
-            Status = Loc.P("не подключено", "not connected");
+            _link = new(Link.NotConnected);
         }
     }
 

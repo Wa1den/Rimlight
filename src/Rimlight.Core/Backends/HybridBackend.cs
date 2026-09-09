@@ -417,15 +417,22 @@ public sealed class HybridBackend : CaptureBackendBase
         _ => Loc.P("нет", "none")
     };
 
-    public string SourceSplit()
+    /// <summary>
+    /// The share of the time each path carried the picture, without the switch count.
+    /// Kept apart because the panel gives them separate rows: together they were one line
+    /// too long for the settings column and wrapped.
+    /// </summary>
+    public string SourceShare()
     {
         double total = Math.Max(1, _ddaMs + _wgcMs + _gdiMs + _deadMs);
         return $"DDA {_ddaMs * 100 / total:F0}% " +
                $"WGC {_wgcMs * 100 / total:F0}% " +
                $"GDI {_gdiMs * 100 / total:F0}% " +
-               Loc.P("без источника ", "no source ") + $"{_deadMs * 100 / total:F0}%; " +
-               Loc.P("переключений ", "switches ") + Switches;
+               Loc.P("без источника ", "no source ") + $"{_deadMs * 100 / total:F0}%";
     }
+
+    public string SourceSplit() =>
+        SourceShare() + "; " + Loc.P("переключений ", "switches ") + Switches;
 
     public override string SummaryLine() => base.SummaryLine() + " | источники: " + SourceSplit();
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "31";
+    const string Version = "35";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -265,8 +265,13 @@ public static class Loc
         ["main.diag.head"] = "Статистика и лог",
         ["main.stats.detailed"] = "Подробная статистика",
         ["main.stats.detailed.note"] = "Данные о задержках с разделением по этапам. Пишутся и в лог, если он включён.",
-        ["main.stats.note"] = "Блок статистики под превью: метод захвата, частота кадров, состояние порта.",
+        ["main.stats.note"] = "Блок статистики: метод захвата, частота кадров, состояние порта.",
+        ["main.stats.place"] = "Отображать статистику под схемой",
+        ["main.stats.place.note"] = "Под схемой зон статистика скрывается вместе с превью. Без галки она выводится внизу этого раздела и видна при узком окне.",
         ["nav.preview"] = "Показывать превью",
+        ["bar.aspect"] = "Восстановить соотношение сторон: подобрать ширину окна так, чтобы превью повторяло пропорции экрана. Высота не меняется.",
+        ["bar.screen"] = "Отображать данные с экрана",
+        ["bar.screen.note"] = "Кадр рисуется внутри кольца зон — тот самый, с которого берутся цвета, уже с расфокусом или резкостью. Требует запущенного вывода.",
         ["main.tray"] = "Сворачивать в трей",
         ["main.autostart"] = "Запускать вместе с Windows",
         ["main.log"] = "Писать лог",
@@ -392,15 +397,16 @@ public static class Loc
         ["stats.stage.reduce"] = "свод",
         ["stats.stage.relay"] = "реле",
         ["stats.stage.out"] = "провод",
-        ["stats.dropped"] = "отброшено:",
+        ["stats.dropped"] = "отброшено",
         ["stats.drop.queue"] = "очередь",
         ["stats.drop.rate"] = "темп",
+        ["stats.switches"] = "переключений",
         ["stats.sources"] = "источники",
         ["stats.current"] = "ток",
         ["stats.current.free"] = "{0:0.0} А из {1:0.0}",
         ["stats.current.limited"] = "{0:0.0} А из {1:0.0}; предел {2:0.0}",
         ["stats.sent"] = "отправлено",
-        ["stats.skipped"] = "пропущено одинаковых",
+        ["stats.skipped"] = "повторов",
         ["stats.reconnects"] = "переподключений",
         ["stats.notrunning"] = "захват не запущен",
 
@@ -463,8 +469,13 @@ public static class Loc
         ["main.diag.head"] = "Statistics and log",
         ["main.stats.detailed"] = "Detailed statistics",
         ["main.stats.detailed.note"] = "Latency figures broken down by stage. Written to the log too, when it is on.",
-        ["main.stats.note"] = "The statistics block under the preview: capture method, frame rates, port state.",
+        ["main.stats.note"] = "The statistics block: capture method, frame rates, port state.",
+        ["main.stats.place"] = "Show statistics under the zone map",
+        ["main.stats.place.note"] = "Under the map the statistics are hidden along with the preview. Unticked, they go to the foot of this section and stay visible in the narrow window.",
         ["nav.preview"] = "Show preview",
+        ["bar.aspect"] = "Restore the aspect ratio: set the window width so the preview keeps the proportions of the screen. The height is left alone.",
+        ["bar.screen"] = "Show screen contents",
+        ["bar.screen.note"] = "The frame is drawn inside the zone ring - the one the colours are taken from, blur or sharpening already applied. Requires the output to be running.",
         ["main.tray"] = "Minimise to tray",
         ["main.autostart"] = "Start with Windows",
         ["main.log"] = "Write log",
@@ -590,15 +601,16 @@ public static class Loc
         ["stats.stage.reduce"] = "reduce",
         ["stats.stage.relay"] = "relay",
         ["stats.stage.out"] = "wire",
-        ["stats.dropped"] = "dropped:",
+        ["stats.dropped"] = "dropped",
         ["stats.drop.queue"] = "queue",
         ["stats.drop.rate"] = "rate",
+        ["stats.switches"] = "switches",
         ["stats.sources"] = "sources",
         ["stats.current"] = "current",
         ["stats.current.free"] = "{0:0.0} A of {1:0.0}",
         ["stats.current.limited"] = "{0:0.0} A of {1:0.0}; ceiling {2:0.0}",
         ["stats.sent"] = "sent",
-        ["stats.skipped"] = "identical skipped",
+        ["stats.skipped"] = "repeats",
         ["stats.reconnects"] = "reconnects",
         ["stats.notrunning"] = "capture not running",
 

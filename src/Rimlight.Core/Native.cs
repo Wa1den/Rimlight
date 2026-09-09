@@ -33,7 +33,8 @@ public sealed class MonitorInfo
     }
 
     public override string ToString() =>
-        $"{DisplayName}  {Width}x{Height}{(IsPrimary ? "  (основной)" : "")}";
+        $"{DisplayName}  {Width}x{Height}" +
+        (IsPrimary ? Loc.P("  (основной)", "  (primary)") : "");
 }
 
 public static class Native

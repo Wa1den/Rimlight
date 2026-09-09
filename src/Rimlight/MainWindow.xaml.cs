@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Rimlight.Capture;
@@ -29,8 +30,8 @@ public partial class MainWindow : Window
 
     readonly List<UIElement> _pages = new();
 
-    readonly TextBlock[] _statLabels = new TextBlock[9];
-    readonly TextBlock[] _statValues = new TextBlock[9];
+    readonly TextBlock[] _statLabels = new TextBlock[10];
+    readonly TextBlock[] _statValues = new TextBlock[10];
 
     /// <summary>Window width to come back to when the preview is switched on again.</summary>
     double _wideWidth;
@@ -126,6 +127,10 @@ public partial class MainWindow : Window
             _statValues[i] = value;
         }
 
+        // оба места для статистики объявлены в разметке и переживают перестроение
+        // страниц, поэтому место выбирается один раз здесь и дальше только по галке
+        PlaceStats();
+
         PreviewToggle.Checked += (_, _) => { if (_rebuildingUi) return; _cfg.ShowPreview = true; MarkDirty(); ApplyPreviewLayout(); };
         PreviewToggle.Unchecked += (_, _) => { if (_rebuildingUi) return; _cfg.ShowPreview = false; MarkDirty(); ApplyPreviewLayout(); };
 
@@ -197,6 +202,7 @@ public partial class MainWindow : Window
         CancelButton.Click += (_, _) => CancelChanges();
 
         OutputButton.Click += (_, _) => { if (_outputWanted) StopOutput(); else StartOutput(); };
+
 
         // a Windows shutdown must not be cancelled into the tray
         Application.Current.SessionEnding += (_, _) => _reallyClosing = true;
@@ -419,11 +425,184 @@ public partial class MainWindow : Window
     /// two assignments to work at all, and it recomputes the height along with the width.
     /// A width of its own also means the window cannot be dragged wider into empty space.
     /// </summary>
+    /// <summary>
+    /// The Main section's page, so the pinned statistics card can follow it. Compared by
+    /// reference rather than by index, which a reordered section list would silently break.
+    /// </summary>
+    UIElement? _mainPage;
+
+    /// <summary>
+    /// Moves the statistics grid between its two places.
+    ///
+    /// One grid rather than a copy in each place: its rows are built once at startup and
+    /// the refresh writes into them twenty times a second, and two sets would double both
+    /// halves of that for the one that is not on screen.
+    /// </summary>
+    void PlaceStats()
+    {
+        Border host = _cfg.StatsUnderPreview ? StatsCard : StatsHost;
+
+        if (StatsGrid.Parent is Border old)
+        {
+            if (ReferenceEquals(old, host)) return;
+            old.Child = null;
+        }
+
+        host.Child = StatsGrid;
+    }
+
+    Image? _screenImage;
+    UIElement? _screenToggle;
+    byte[] _screenBuffer = Array.Empty<byte>();
+    long _screenVersion;
+
+    Button? _aspectButton;
+
+    /// <summary>
+    /// The two controls of the preview itself, under it rather than on a settings page:
+    /// they are ways of looking at the layout, used while working on it. Rebuilt whole on a
+    /// language change, because their explanations live inside the elements and there is
+    /// nothing to reassign.
+    /// </summary>
+    void BuildBarControls()
+    {
+        if (_aspectButton != null) StatusBar.Children.Remove(_aspectButton);
+        if (_screenToggle != null) StatusBar.Children.Remove(_screenToggle);
+
+        _aspectButton = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = "",
+                FontFamily = (FontFamily)FindResource("Icons"),
+                FontSize = 12
+            },
+            Padding = new Thickness(9, 4, 9, 4),
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+
+            // всплывающая подсказка наследует шрифт значка, в котором букв нет
+            ToolTip = new TextBlock
+            {
+                Text = Loc.T("bar.aspect"),
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 320,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 12
+            }
+        };
+        _aspectButton.Click += (_, _) => FitPreviewAspect();
+
+        _screenToggle = Check(Loc.T("bar.screen"), _cfg.ShowScreen, v =>
+        {
+            _cfg.ShowScreen = v;
+            UpdateScreenPreview();
+        }, Loc.T("bar.screen.note"));
+
+        if (_screenToggle is FrameworkElement fe)
+        {
+            fe.Margin = new Thickness(12, 0, 0, 0);
+            fe.VerticalAlignment = VerticalAlignment.Center;
+
+            // A Fluent checkbox measures taller than the button beside it, so while the
+            // preview is shown it sets the height of the whole bar - and hiding it with the
+            // preview dropped the button by those few pixels. The bar keeps the tallest
+            // height it has ever needed. MinHeight rather than Height: the button lives
+            // inside the bar, so assigning its measured height back to the bar shrinks the
+            // button, which shrinks the bar again, and the two collapse together.
+            fe.SizeChanged += (_, _) =>
+            {
+                if (fe.Visibility == Visibility.Visible)
+                    StatusBar.MinHeight = Math.Max(StatusBar.MinHeight, fe.ActualHeight);
+            };
+        }
+
+        DockPanel.SetDock(_aspectButton, Dock.Right);
+        DockPanel.SetDock(_screenToggle, Dock.Right);
+
+        // Кнопка вставляется первой и потому оказывается у самого края: DockPanel отдаёт
+        // правый край тому, кто пришёл раньше. Оба - перед строкой статуса, которая как
+        // последний ребёнок занимает остаток полосы.
+        StatusBar.Children.Insert(StatusBar.Children.Count - 1, _aspectButton);
+        StatusBar.Children.Insert(StatusBar.Children.Count - 1, _screenToggle);
+
+        ShowBarControls(_cfg.ShowPreview);
+    }
+
+    void ShowBarControls(bool on)
+    {
+        var v = on ? Visibility.Visible : Visibility.Collapsed;
+        if (_screenToggle != null) _screenToggle.Visibility = v;
+        if (_aspectButton != null) _aspectButton.Visibility = v;
+    }
+
+    /// <summary>
+    /// Changes the window width so the preview holds the screen's own proportions.
+    ///
+    /// Width only: the height is where the settings page lives, and stretching it to fit a
+    /// 21:9 screen would leave the page short. The two left columns are fixed, so a change
+    /// in window width reaches the preview one for one.
+    /// </summary>
+    void FitPreviewAspect()
+    {
+        var monitor = _engine.Monitor;
+        if (monitor == null || monitor.Height <= 0 || !_cfg.ShowPreview) return;
+
+        double cw = PreviewCanvas.ActualWidth, ch = PreviewCanvas.ActualHeight;
+        if (cw < 10 || ch < 10) return;
+
+        if (WindowState != WindowState.Normal) WindowState = WindowState.Normal;
+
+        double wanted = ch * monitor.Width / monitor.Height;
+
+        // не уже узкого предела и не шире рабочей области: за её краем окно не подвинуть
+        double max = Math.Max(WideMinWidth, SystemParameters.WorkArea.Width);
+        Width = Math.Clamp(ActualWidth + (wanted - cw), WideMinWidth, max);
+
+        // чтобы возврат из скрытого превью пришёл к этой же ширине
+        _wideWidth = Width;
+    }
+
+    /// <summary>
+    /// Puts the newest reduced frame under the zone ring.
+    ///
+    /// The frame is a couple of hundred pixels across, so building an image out of it on
+    /// the UI tick costs little, and a tick where nothing new arrived does nothing at all.
+    /// </summary>
+    void UpdateScreenPreview()
+    {
+        bool on = _cfg.ShowScreen && _cfg.ShowPreview;
+        _engine.ScreenWanted = on;
+
+        if (_screenImage == null) return;
+
+        if (!on || !_engine.IsRunning)
+        {
+            // ничего не захватывается, а застывший кадр читался бы как то, что на экране
+            // сейчас
+            if (_screenImage.Source == null) return;
+
+            _screenImage.Source = null;
+            _screenVersion = 0;
+            return;
+        }
+
+        if (!_engine.TryTakeScreen(ref _screenBuffer, ref _screenVersion, out int w, out int h, out int stride))
+            return;
+
+        if (w <= 0 || h <= 0 || stride <= 0) return;
+
+        var frame = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, _screenBuffer, stride);
+        frame.Freeze();   // построен не в потоке отрисовки, поэтому только замороженным
+        _screenImage.Source = frame;
+    }
+
     void ApplyPreviewLayout()
     {
         if (_cfg.ShowPreview)
         {
             RightColumn.Visibility = Visibility.Visible;
+            ShowBarControls(true);
             MaxWidth = double.PositiveInfinity;
             MinWidth = WideMinWidth;
             if (IsLoaded && WindowState == WindowState.Normal)
@@ -441,6 +620,7 @@ public partial class MainWindow : Window
         double narrow = NarrowWidth();
 
         RightColumn.Visibility = Visibility.Collapsed;
+        ShowBarControls(false);
         MinWidth = 0;
         Width = narrow;
         MinWidth = MaxWidth = narrow;
@@ -553,6 +733,7 @@ public partial class MainWindow : Window
         _pages.Clear();
         PreviewToggle.Content = Loc.T("nav.preview");
         PreviewToggle.IsChecked = _cfg.ShowPreview;    // guarded by _rebuildingUi
+        BuildBarControls();
 
         AddTab(Loc.T("tab.main"), "", panel =>
         {
@@ -603,12 +784,21 @@ public partial class MainWindow : Window
             // detail follows the block it belongs to, the way "start minimised" follows
             // the tray checkbox
             CheckBox detailed = null!;
+            CheckBox placed = null!;
             panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v =>
             {
                 _cfg.ShowStats = v;
                 detailed.IsEnabled = v;
+                placed.IsEnabled = v;
                 if (!v) detailed.IsChecked = false;
             }, Loc.T("main.stats.note")));
+
+            panel.Children.Add(Check(Loc.T("main.stats.place"), _cfg.StatsUnderPreview, v =>
+            {
+                _cfg.StatsUnderPreview = v;
+                PlaceStats();
+            }, Loc.T("main.stats.place.note"), out placed));
+            placed.IsEnabled = _cfg.ShowStats;
 
             panel.Children.Add(Check(Loc.T("main.stats.detailed"), _cfg.DetailedStats,
                 v => _cfg.DetailedStats = v, Loc.T("main.stats.detailed.note"), out detailed));
@@ -644,6 +834,9 @@ public partial class MainWindow : Window
             pathText.Margin = new Thickness(0, 8, 0, 0);
             panel.Children.Add(pathText);
         });
+
+        // страница «Основное» только что добавлена; статистика показывается под ней
+        _mainPage = _pages[^1];
 
         AddTab(Loc.T("tab.device"), "", panel =>
         {
@@ -1299,6 +1492,10 @@ public partial class MainWindow : Window
         _previewShapes.Clear();
         _previewLabels.Clear();
 
+        // первым ребёнком, чтобы кольцо зон рисовалось поверх кадра
+        _screenImage = new Image { Stretch = Stretch.Fill };
+        PreviewCanvas.Children.Add(_screenImage);
+
         // a soft theme-coloured outline keeps the grid readable while the cells are dark;
         // the first LED is rung in the accent colour instead of shouting in white
         var accent = TryFindResource("AccentFillColorDefaultBrush") as Brush ?? Brushes.White;
@@ -1312,7 +1509,7 @@ public partial class MainWindow : Window
                 Fill = Brushes.Black,
                 RadiusX = 3,
                 RadiusY = 3,
-                Stroke = first ? accent : Res("PanelStroke"),
+                Stroke = first ? accent : Res("CellStroke"),
                 StrokeThickness = first ? 2 : 1
             };
             PreviewCanvas.Children.Add(r);
@@ -1347,6 +1544,21 @@ public partial class MainWindow : Window
     /// <summary>Thickness of the preview bands, in pixels, independent of window size.</summary>
     const double PreviewBandPx = 46;
 
+    /// <summary>
+    /// Whole pixels for a shape whose outline is one pixel wide.
+    ///
+    /// A one-pixel stroke is centred on the edge, so at a fractional position it covers
+    /// half of each neighbouring row and is drawn as two grey rows instead of one line.
+    /// </summary>
+    static double Crisp(double v) => Math.Max(1, Math.Round(v));
+
+    /// <summary>Puts a shape on whole pixels, its outline half a pixel inside them.</summary>
+    static void Snap(UIElement e, double x, double y)
+    {
+        Canvas.SetLeft(e, Math.Round(x) + 0.5);
+        Canvas.SetTop(e, Math.Round(y) + 0.5);
+    }
+
     void LayoutPreview()
     {
         double cw = PreviewCanvas.ActualWidth, ch = PreviewCanvas.ActualHeight;
@@ -1359,6 +1571,22 @@ public partial class MainWindow : Window
         // the preview shows strip order and colour, not the sampling depth to scale.
         const double band = PreviewBandPx;
 
+        // во весь холст, а не внутрь кольца: тогда точка кадра лежит ровно под той зоной,
+        // которая с неё читает
+        if (_screenImage != null)
+        {
+            Canvas.SetLeft(_screenImage, 0);
+            Canvas.SetTop(_screenImage, 0);
+            _screenImage.Width = cw;
+            _screenImage.Height = ch;
+        }
+
+        // Радиус берётся у карточки, в которой холст лежит: одно число на оба, и скругление
+        // не разъедется, если карточку когда-нибудь перерисуют. CornerRadius бордюра сам по
+        // себе детей не режет, поэтому холсту задаётся Clip.
+        double radius = PreviewCanvas.Parent is Border card ? card.CornerRadius.TopLeft : 0;
+        PreviewCanvas.Clip = new RectangleGeometry(new Rect(0, 0, cw, ch), radius, radius);
+
         var zones = _engine.Zones;
         for (int i = 0; i < _previewShapes.Count && i < zones.Length; i++)
         {
@@ -1367,17 +1595,15 @@ public partial class MainWindow : Window
 
             if (z.Side is Side.Top or Side.Bottom)
             {
-                r.Width = Math.Max(2, (z.X1 - z.X0) * cw - 2);
+                r.Width = Crisp(Math.Max(2, (z.X1 - z.X0) * cw - 2));
                 r.Height = band;
-                Canvas.SetLeft(r, z.X0 * cw);
-                Canvas.SetTop(r, z.Side == Side.Top ? 0 : ch - band);
+                Snap(r, z.X0 * cw, z.Side == Side.Top ? 0 : ch - band);
             }
             else
             {
                 r.Width = band;
-                r.Height = Math.Max(2, (z.Y1 - z.Y0) * ch - 2);
-                Canvas.SetLeft(r, z.Side == Side.Left ? 0 : cw - band);
-                Canvas.SetTop(r, z.Y0 * ch);
+                r.Height = Crisp(Math.Max(2, (z.Y1 - z.Y0) * ch - 2));
+                Snap(r, z.Side == Side.Left ? 0 : cw - band, z.Y0 * ch);
             }
         }
 
@@ -1418,6 +1644,7 @@ public partial class MainWindow : Window
         }
 
         LayoutPreview();
+        UpdateScreenPreview();
 
         if (_previewColors.Length > 0)
         {
@@ -1440,7 +1667,8 @@ public partial class MainWindow : Window
         // the "per 5 s" figure becomes a running total - it read 1000 fps and climbing.
         cap?.Metrics.Tick();
 
-        string capLine = cap == null ? Loc.T("stats.notrunning") : cap.SourceSplit();
+        // без счётчика переключений: он переехал в строку метода, чтобы обе помещались
+        string capLine = cap == null ? Loc.T("stats.notrunning") : cap.SourceShare();
         string activeNow = cap?.ActiveSource ?? "-";
         if (_cfg.CaptureMode == CaptureMode.Auto) activeNow += $" ({Loc.T("capture.autoSuffix")})";
         var snap = cap?.Metrics.Snapshot();
@@ -1462,42 +1690,52 @@ public partial class MainWindow : Window
         if (_cfg.DetailedStats)
         {
             _statLabels[5].Text = Loc.T("stats.latency") + ":";
-            _statLabels[6].Text = Loc.T("stats.stages") + ":";
-            _statLabels[7].Text = Loc.T("stats.sources") + ":";
-            _statLabels[8].Text = Loc.T("stats.current") + ":";
+            _statLabels[6].Text = Loc.T("stats.dropped") + ":";
+            _statLabels[7].Text = Loc.T("stats.stages") + ":";
+            _statLabels[8].Text = Loc.T("stats.sources") + ":";
+            _statLabels[9].Text = Loc.T("stats.current") + ":";
         }
 
+        string ms = Loc.T("stats.ms");
+
         _statValues[0].Text = $"{_engine.Monitor?.DisplayName ?? "?"}; {_engine.Monitor?.Width}x{_engine.Monitor?.Height}";
-        _statValues[1].Text = activeNow;
-        _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1} fps; p50 {(snap?.P50Ms ?? 0):F1} ms; p99 {(snap?.P99Ms ?? 0):F1} ms";
+        // счётчик переключений стоит здесь, а не в строке источников: вместе с долями
+        // он в одну строку не помещался
+        _statValues[1].Text = cap == null ? activeNow
+            : $"{activeNow}; {Loc.T("stats.switches")} {cap.Switches}";
+        _statValues[2].Text = $"{(snap?.FpsAvg5s ?? 0):F1} fps; p50 {(snap?.P50Ms ?? 0):F1}; p99 {(snap?.P99Ms ?? 0):F1} {ms}";
         _statValues[3].Text = $"{_engine.OutputFps:F1} fps; {Loc.T("stats.sent")} {_engine.FramesSent}; {Loc.T("stats.skipped")} {_engine.FramesSkipped}";
         _statValues[4].Text = $"{_engine.DeviceStatus}; {Loc.T("stats.reconnects")} {_engine.Reconnects}";
         // end to end: from the moment the compositor put the picture on screen to the
         // moment its colours went out of the port
         if (_cfg.DetailedStats)
         {
-            _statValues[5].Text = $"{_engine.FrameAgeMs:F1} " + Loc.T("stats.ms") +
+            _statValues[5].Text = $"{_engine.FrameAgeMs:F1}" +
                                   $"; p99 {_engine.FrameAgeP99Ms:F1}" +
-                                  $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1}" +
-                                  $"; {Loc.T("stats.dropped")} {Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
-                                  $", {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
-            _statValues[6].Text = $"{Loc.T("stats.stage.grab")} {_engine.StageGrabMs:F1}" +
+                                  $"; {Loc.T("stats.worst")} {_engine.FrameAgeMaxMs:F1} {ms}";
+            _statValues[6].Text = $"{Loc.T("stats.drop.queue")} {_engine.FramesQueueFull}" +
+                                  $"; {Loc.T("stats.drop.rate")} {_engine.FramesTooSoon}";
+            _statValues[7].Text = $"{Loc.T("stats.stage.grab")} {_engine.StageGrabMs:F1}" +
                                   $"; {Loc.T("stats.stage.reduce")} {_engine.StageReduceMs:F1}" +
                                   $"; {Loc.T("stats.stage.relay")} {_engine.StageRelayMs:F1}" +
                                   $"; {Loc.T("stats.stage.out")} {_engine.StageOutMs:F1}";
-            _statValues[7].Text = capLine;
+            _statValues[8].Text = capLine;
 
             // against the ceiling in the same line, because the only question this answers
             // is whether the ceiling is doing anything
             double amps = _cfg.TotalLeds * (RimlightConfig.AmpsPerLedIdle +
                                             RimlightConfig.AmpsPerLedWhite * _engine.MeanDuty);
-            _statValues[8].Text = _cfg.PowerLimitAmps > 0
+            _statValues[9].Text = _cfg.PowerLimitAmps > 0
                 ? string.Format(Loc.T("stats.current.limited"), amps, _cfg.FullWhiteAmps, _cfg.PowerLimitAmps)
                 : string.Format(Loc.T("stats.current.free"), amps, _cfg.FullWhiteAmps);
         }
 
-        // the toggle applies live; the block only exists while the preview column does
-        StatsCard.Visibility = _cfg.ShowStats ? Visibility.Visible : Visibility.Collapsed;
+        // обе галки применяются живо, поэтому видимость обеих карточек ставится каждый тик
+        StatsCard.Visibility = _cfg.ShowStats && _cfg.StatsUnderPreview
+            ? Visibility.Visible : Visibility.Collapsed;
+        StatsHost.Visibility = _cfg.ShowStats && !_cfg.StatsUnderPreview
+                               && ReferenceEquals(PageHost.Content, _mainPage)
+            ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateCropStatus();
 

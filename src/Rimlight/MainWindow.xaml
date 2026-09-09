@@ -63,14 +63,22 @@
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <ContentControl x:Name="PageHost" Grid.Row="0"/>
 
+                <!-- Second home for the statistics, for when they are not under the zone
+                     map. A row of the column rather than the last thing on the Main page:
+                     inside the page it scrolled away with the settings, and the numbers
+                     are watched while the settings above them are being turned. -->
+                <Border x:Name="StatsHost" Grid.Row="1" Style="{StaticResource Card}"
+                        Margin="0,10,0,0" Visibility="Collapsed"/>
+
                 <!-- a new release is an offer, not a fault, so it gets a card of its own
                      rather than a line in the status bar, which the next tick would take
                      away -->
-                <Border x:Name="UpdateCard" Grid.Row="1" Style="{StaticResource Card}"
+                <Border x:Name="UpdateCard" Grid.Row="2" Style="{StaticResource Card}"
                         Padding="12" Margin="0,10,0,0" Visibility="Collapsed">
                     <DockPanel>
                         <!-- dismissal lives for the session only: the check runs at startup,
@@ -84,7 +92,7 @@
                     </DockPanel>
                 </Border>
 
-                <Border x:Name="DirtyBar" Grid.Row="2" Style="{StaticResource Card}"
+                <Border x:Name="DirtyBar" Grid.Row="3" Style="{StaticResource Card}"
                         Padding="12" Margin="0,10,0,0" Visibility="Collapsed">
                     <DockPanel>
                         <Button x:Name="CancelButton" DockPanel.Dock="Right" Padding="14,6" Margin="8,0,0,0"/>

@@ -52,6 +52,12 @@ public partial class MainWindow : Window
     /// instead of one per character.
     /// </summary>
     readonly DispatcherTimer _relayoutDebounce = new() { Interval = TimeSpan.FromMilliseconds(600) };
+
+    /// <summary>
+    /// Windows reports the display configuration several times while a driver comes back,
+    /// and each report would otherwise restart capture on its own.
+    /// </summary>
+    readonly DispatcherTimer _displayDebounce = new() { Interval = TimeSpan.FromMilliseconds(1500) };
     int _previewLayoutVersion = -1;
     bool _dirty;
     bool _rebuildingUi;
@@ -148,9 +154,16 @@ public partial class MainWindow : Window
         // and the rail is empty until the sections are in it
         ApplyPreviewLayout();
 
+        _displayDebounce.Tick += (_, _) =>
+        {
+            _displayDebounce.Stop();
+            ApplyDisplayChange();
+        };
+
         Loaded += (_, _) =>
         {
             _power.Attach(this);
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
             SetupTray();
             Restart();
 
@@ -227,6 +240,7 @@ public partial class MainWindow : Window
             _saved.Save();
             _overlay?.Close();
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
             _power.Dispose();
             _engine.Dispose();
         };
@@ -254,6 +268,90 @@ public partial class MainWindow : Window
 
         if (reason != null) _engine.Pause(reason);
         else if (_outputWanted) _engine.Resume(WakeHoldOffMs(state));
+    }
+
+    // ---- смена конфигурации экранов ----------------------------------------
+
+    /// <summary>
+    /// The event arrives on the SystemEvents thread and repeats while a driver settles, so
+    /// it is handed to the debounce timer rather than acted on.
+    /// </summary>
+    void OnDisplaySettingsChanged(object? sender, EventArgs e) =>
+        Dispatcher.BeginInvoke(() =>
+        {
+            _displayDebounce.Stop();
+            _displayDebounce.Start();
+        });
+
+    /// <summary>
+    /// Resolves the configured screen against the screens attached now, and moves capture
+    /// onto it.
+    ///
+    /// A display driver restart, a driver update among them, renumbers the GDI device
+    /// names. In one session \\.\DISPLAY2 came back as \\.\DISPLAY7, and every capture path
+    /// went on asking for the old name: Desktop Duplication found no output, CreateDC
+    /// returned nothing, and the WGC session threw on a stale HMONITOR. Nothing re-read
+    /// the screen, so the strip sat at zero frames per second for eleven minutes until the
+    /// program was restarted by hand.
+    ///
+    /// The EDID model is what makes this work at all: it is the same string across the
+    /// rename, and the device name it is matched back to is written into the settings here
+    /// so that a later reconnect does not resurrect the old one.
+    /// </summary>
+    void ApplyDisplayChange()
+    {
+        var fresh = Native.EnumerateMonitors();
+        var found = ScreenChoice.FindSame(fresh, _cfg.MonitorDeviceName, _cfg.MonitorModel);
+        RefreshMonitorList(fresh, found);
+
+        // Само событие тоже пишется: в логе не было ни строки о том, что конфигурация
+        // экранов менялась.
+        ProbeLog.Log(Loc.P("экраны", "screens"),
+                     Loc.P($"конфигурация изменилась, экранов {fresh.Count}, выбран {found?.DeviceName ?? "-"}",
+                           $"configuration changed, {fresh.Count} screens, chosen {found?.DeviceName ?? "-"}"));
+
+        if (found == null)
+        {
+            ProbeLog.Log(Loc.P("экраны", "screens"),
+                         Loc.P($"экран {ScreenLabel()} не найден", $"screen {ScreenLabel()} not found"));
+
+            // Без экрана захватывать нечего, а подстановка соседнего увела бы свет на
+            // чужую панель с зонами, посчитанными под эту.
+            if (_engine.IsRunning) _engine.Stop(blackout: true);
+            return;
+        }
+
+        // Имя устройства сменила Windows, поэтому оно пишется и в сохранённую копию:
+        // это не правка настроек, и полоса несохранённого изменения не появляется.
+        _cfg.MonitorDeviceName = _saved.MonitorDeviceName = found.DeviceName;
+
+        if (!_outputWanted) return;
+
+        // движок стоял без экрана: порт закрыт, и поднимать надо целиком
+        if (!_engine.IsRunning) { Restart(); return; }
+
+        if (!ScreenChoice.Same(_engine.Monitor, found)) _engine.Rebind(found);
+    }
+
+    /// <summary>What the log shows in place of a screen that is not there.</summary>
+    string ScreenLabel() =>
+        _cfg.MonitorModel.Length > 0 ? _cfg.MonitorModel + " " + _cfg.MonitorDeviceName : _cfg.MonitorDeviceName;
+
+    /// <summary>
+    /// Puts the screens attached now in the settings list, keeping the choice on the one
+    /// capture is using.
+    /// </summary>
+    void RefreshMonitorList(List<MonitorInfo> fresh, MonitorInfo? chosen)
+    {
+        _monitors.Clear();
+        _monitors.AddRange(fresh);
+
+        bool rebuilding = _rebuildingUi;
+        _rebuildingUi = true;
+        _monitorBox.Items.Clear();
+        foreach (var m in _monitors) _monitorBox.Items.Add(m.ToString());
+        _monitorBox.SelectedIndex = chosen == null ? -1 : _monitors.IndexOf(chosen);
+        _rebuildingUi = rebuilding;
     }
 
     // ---- старт и стоп -------------------------------------------------------
@@ -1742,6 +1840,9 @@ public partial class MainWindow : Window
         // Остановленный вывод показывается прежде ошибки порта: лента погашена нажатием
         // кнопки, и порт в этот момент ни при чём.
         if (!_outputWanted) SayFromTick(string.Format(Loc.T("bar.paused"), Loc.T("bar.byhand")));
+        // Экран, с которого шёл захват, исчез. Без этой ветки строка сообщала об идущем
+        // выводе, которого нет.
+        else if (!_engine.IsRunning) SayFromTick(Loc.T("warn.screen"), warn: true);
         else if (_engine.IsPaused) SayFromTick(string.Format(Loc.T("bar.paused"), _engine.PauseReason));
         else if (_engine.DeviceHasError) SayFromTick(Loc.T("warn.port"), warn: true);
         else SayFromTick(string.Format(Loc.T("bar.running"), Rate(ShownRate())));

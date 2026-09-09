@@ -47,6 +47,7 @@ public sealed class RimlightEngine : IDisposable
     volatile bool _relayout;
     volatile bool _restartCapture;
     volatile bool _captureSuspended;
+    MonitorInfo? _rebindTo;
     string _pauseReason = "";
     long _sendHoldUntil;
 
@@ -184,6 +185,21 @@ public sealed class RimlightEngine : IDisposable
     public void RestartCapture() => _restartCapture = true;
 
     /// <summary>
+    /// Points capture at the screen resolved again after the display configuration changed.
+    ///
+    /// A display driver restart renumbers the GDI device names: in one session
+    /// <c>\\.\DISPLAY2</c> came back as <c>\\.\DISPLAY7</c>, and all three capture paths
+    /// were left holding a name that no longer existed - Desktop Duplication found no
+    /// output, CreateDC failed, and the WGC session was built on a stale HMONITOR. Going
+    /// through <see cref="Start"/> instead would also reopen the port and cost its 2.5 s
+    /// bootloader wait, which the strip would spend dark.
+    ///
+    /// Applied on the output thread, like <see cref="RestartCapture"/> and for the same
+    /// reason - it waits on the backend's frame signal.
+    /// </summary>
+    public void Rebind(MonitorInfo monitor) => Interlocked.Exchange(ref _rebindTo, monitor);
+
+    /// <summary>
     /// Stands capture down while the display is off, and brings it back with the display.
     ///
     /// A blanked screen produces no composition, so every capture path starves at once and
@@ -222,19 +238,35 @@ public sealed class RimlightEngine : IDisposable
     {
         if (_monitor == null) return;
 
+        RestartCaptureNow();
+        ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("метод захвата: ", "capture method: ") + _cfg.CaptureMode);
+    }
+
+    void ApplyRebind(MonitorInfo monitor)
+    {
+        _monitor = monitor;
+        RebuildZones();
+        RestartCaptureNow();
+
+        ProbeLog.Log(Loc.P("движок", "engine"),
+                     Loc.P($"экран найден заново: {monitor.DeviceName} {monitor.Width}x{monitor.Height}",
+                           $"screen resolved again: {monitor.DeviceName} {monitor.Width}x{monitor.Height}"));
+    }
+
+    /// <summary>Takes capture down and brings it back up on the screen held right now.</summary>
+    void RestartCaptureNow()
+    {
         _capture?.Stop();
         _capture?.Dispose();
         _capture = null;
 
-        // с погашенным экраном новый метод не поднимается: его вернёт ApplyCaptureSuspend,
-        // когда экран включат, и уже с этой настройкой
-        if (!_captureSuspended)
+        // с погашенным экраном захват не поднимается: его вернёт ApplyCaptureSuspend,
+        // когда экран включат, и уже с этими настройками
+        if (!_captureSuspended && _monitor != null)
         {
             _capture = NewCapture(_cfg);
             _capture.Start(_monitor);
         }
-
-        ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("метод захвата: ", "capture method: ") + _cfg.CaptureMode);
     }
 
     static HybridBackend NewCapture(RimlightConfig cfg) => new()
@@ -400,6 +432,9 @@ public sealed class RimlightEngine : IDisposable
                 _restartCapture = false;
                 ApplyCaptureRestart();
             }
+
+            var rebindTo = Interlocked.Exchange(ref _rebindTo, null);
+            if (rebindTo != null) ApplyRebind(rebindTo);
 
             ApplyCaptureSuspend();
 

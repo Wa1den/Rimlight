@@ -77,6 +77,11 @@ public sealed class RimlightEngine : IDisposable
     byte[] _sampled = Array.Empty<byte>();
     byte[] _output = Array.Empty<byte>();
 
+    // проба ярких вспышек, живёт только в этой ветке
+    double _flashMeanEma, _flashMaxEma;
+    long _brightFlashes, _lastFlashLogMs;
+    bool _flashProbeLogged;
+
     /// <summary>All zeroes, resent at the keepalive interval for as long as the pause lasts.</summary>
     byte[] _black = Array.Empty<byte>();
 
@@ -597,6 +602,8 @@ public sealed class RimlightEngine : IDisposable
                 }
             }
 
+            WatchBrightFlash(_device.FramesSent != sentBefore, haveNewFrame);
+
             if (haveNewFrame && !stamps.IsEmpty) pendingStamps = stamps;
 
             // Only frames that carried new pixels, and only once they are on the wire: a
@@ -668,6 +675,70 @@ public sealed class RimlightEngine : IDisposable
             if (waitSet.Length == 2 && pacer.Arm(restMs)) WaitHandle.WaitAny(waitSet);
             else pacer.Wait(restMs);
         }
+    }
+
+    /// <summary>
+    /// Temporary probe for the bright flashes reported on the strip. The log counts frames
+    /// far darker than the recent norm and nothing for brighter ones, so a flash leaves no
+    /// trace at all. This records the frame the output thread built and whether it reached
+    /// the port, which separates the two candidates: a bright frame in the data means
+    /// capture or the pipeline made it, while no entry at the moment of a visible flash
+    /// means the bytes left here normal.
+    /// </summary>
+    void WatchBrightFlash(bool sent, bool haveNewFrame)
+    {
+        if (_output.Length == 0) return;
+
+        long sum = 0;
+        int max = 0, maxAt = 0;
+        for (int i = 0; i < _output.Length; i++)
+        {
+            sum += _output[i];
+            if (_output[i] > max) { max = _output[i]; maxAt = i; }
+        }
+        double mean = sum / (double)_output.Length;
+
+        double prevMean = _flashMeanEma, prevMax = _flashMaxEma;
+
+        // Разовая строка о том, что проба в сборке жива, и с какими числами она работает.
+        if (!_flashProbeLogged)
+        {
+            _flashProbeLogged = true;
+            ProbeLog.Log("вспышка", string.Format(CultureInfo.InvariantCulture,
+                "проба включена: первый кадр средн={0:F1} макс={1}", mean, max));
+        }
+
+        // Множитель и постоянная сглаживания те же, что у тёмной вспышки в Metrics, только
+        // в другую сторону. Полы подобраны на пробном запуске: с ними подъём яркости после
+        // тёмной сцены не считается вспышкой, а на средней яркости игры 15-40 остаётся запас.
+        // Отдельное правило по максимуму ловит вспышку на нескольких диодах, от которой
+        // средняя по всей ленте почти не меняется.
+        bool byMean = prevMean > 10 && mean > Math.Max(prevMean * 3, 60);
+        bool byMax = prevMax > 30 && max > Math.Max(prevMax * 3, 150);
+
+        _flashMeanEma = prevMean == 0 ? mean : prevMean + (mean - prevMean) * 0.05;
+        _flashMaxEma = prevMax == 0 ? max : prevMax + (max - prevMax) * 0.05;
+
+        if (!byMean && !byMax) return;
+        _brightFlashes++;
+
+        // Пачка ярких кадров описывается первой строкой, остальные только считаются.
+        long now = Environment.TickCount64;
+        if (now - _lastFlashLogMs < 200) return;
+        _lastFlashLogMs = now;
+
+        int led = maxAt / 3;
+        var snap = _capture?.Metrics.Snapshot();
+        ProbeLog.Log("вспышка", string.Format(CultureInfo.InvariantCulture,
+            "яркая (всего {0}) по {1}: средн={2:F1} было={3:F1} макс={4} было={5:F1} " +
+            "на диоде {6} ({7},{8},{9}) | кадр из захвата={10},{11},{12} новый={13} " +
+            "источник={14} окно={15}",
+            _brightFlashes, byMean ? "средней" : "максимуму",
+            mean, prevMean, max, prevMax,
+            led + 1, _output[led * 3], _output[led * 3 + 1], _output[led * 3 + 2],
+            snap?.R ?? 0, snap?.G ?? 0, snap?.B ?? 0,
+            haveNewFrame ? "да" : "нет", _capture?.ActiveSource ?? "-", ForegroundName())
+            + (sent ? "" : " отправлен=нет"));
     }
 
     /// <summary>

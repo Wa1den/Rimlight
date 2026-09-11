@@ -15,10 +15,19 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RootNamespace>Rimlight</RootNamespace>
     <AssemblyName>Rimlight</AssemblyName>
-    <Version>1.8.1</Version>
+    <Version>1.8.2</Version>
     <!-- ThemeMode (Fluent) is still marked experimental in .NET 9 -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The program has no pen or touch input, and WPF loads PenImc_cor3.dll for it lazily,
+         on the first tablet enumeration. A .NET update installed while the program runs
+         removes the old runtime folder: on 10.09.2026 a session started on 9.0.19 kept
+         running after the update to 9.0.20 and ten hours later terminated on
+         "SxS COM registration of PenIMC_cor3.dll failed" on the pen thread. -->
+    <RuntimeHostConfigurationOption Include="Switch.System.Windows.Input.Stylus.DisableStylusAndTouchSupport" Value="true" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="icon.ico" />

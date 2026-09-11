@@ -13,7 +13,7 @@ public partial class App : Application
     ///
     /// Without it such a crash left nothing in rimlight.log: on 10.09.2026 the pen thread
     /// failed on a runtime removed by an update, and the stack was only found in the Windows
-    /// event log. The process still ends; this only records why.
+    /// event log.
     /// </summary>
     public App()
     {

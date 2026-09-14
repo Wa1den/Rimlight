@@ -97,6 +97,7 @@ public partial class MainWindow : Window
         Loc.Load(_cfg.Language);
 
         Icon = LoadIcon();
+        SetupChrome();
         _saved = _cfg.Clone();
 
         // Settings written before the switch to the EDID model know only the device name.
@@ -165,13 +166,14 @@ public partial class MainWindow : Window
             _power.Attach(this);
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
             SetupTray();
+            UpdateChromeMetrics();
             Restart();
 
             // Attach reports the display straight away, the lock state was read in the
             // watcher's constructor, and neither of them raises anything on its own.
             ApplyPowerState(_power.State);
 
-            // the startup pass had to estimate the window frame; now it can be measured
+            // the startup pass measured the left column before anything was laid out
             if (!_cfg.ShowPreview) ApplyPreviewLayout();
 
             if (_cfg.StartMinimized) WindowState = WindowState.Minimized;
@@ -511,6 +513,12 @@ public partial class MainWindow : Window
     /// </summary>
     const double WideMinWidth = 1317;
 
+    /// <summary>
+    /// The usual rates for a USB serial controller. The list stops at 2 Mbaud: on a 16 MHz
+    /// AVR, as in an Arduino Nano, that is the smallest divider the UART has.
+    /// </summary>
+    static readonly int[] BaudRates = { 115200, 230400, 250000, 500000, 1000000, 2000000 };
+
     /// <summary>Width of the settings column, the same with the preview and without it.
     /// Declared in MainWindow.xaml as well, and the two have to stay in step.</summary>
     const double PageWidth = 430;
@@ -524,10 +532,10 @@ public partial class MainWindow : Window
     /// A width of its own also means the window cannot be dragged wider into empty space.
     /// </summary>
     /// <summary>
-    /// The Main section's page, so the pinned statistics card can follow it. Compared by
+    /// The Capture section's page, so the pinned statistics card can follow it. Compared by
     /// reference rather than by index, which a reordered section list would silently break.
     /// </summary>
-    UIElement? _mainPage;
+    UIElement? _capturePage;
 
     /// <summary>
     /// Moves the statistics grid between its two places.
@@ -557,15 +565,14 @@ public partial class MainWindow : Window
     Button? _aspectButton;
 
     /// <summary>
-    /// The two controls of the preview itself, under it rather than on a settings page:
-    /// they are ways of looking at the layout, used while working on it. Rebuilt whole on a
-    /// language change, because their explanations live inside the elements and there is
-    /// nothing to reassign.
+    /// The two controls of the preview itself, over it in the title bar rather than on a
+    /// settings page: they are ways of looking at the layout, used while working on it.
+    /// Rebuilt whole on a language change, because their explanations live inside the
+    /// elements and there is nothing to reassign.
     /// </summary>
     void BuildBarControls()
     {
-        if (_aspectButton != null) StatusBar.Children.Remove(_aspectButton);
-        if (_screenToggle != null) StatusBar.Children.Remove(_screenToggle);
+        PreviewTools.Children.Clear();
 
         _aspectButton = new Button
         {
@@ -598,41 +605,17 @@ public partial class MainWindow : Window
         }, Loc.T("bar.screen.note"));
 
         if (_screenToggle is FrameworkElement fe)
-        {
-            fe.Margin = new Thickness(12, 0, 0, 0);
             fe.VerticalAlignment = VerticalAlignment.Center;
 
-            // A Fluent checkbox measures taller than the button beside it, so while the
-            // preview is shown it sets the height of the whole bar - and hiding it with the
-            // preview dropped the button by those few pixels. The bar keeps the tallest
-            // height it has ever needed. MinHeight rather than Height: the button lives
-            // inside the bar, so assigning its measured height back to the bar shrinks the
-            // button, which shrinks the bar again, and the two collapse together.
-            fe.SizeChanged += (_, _) =>
-            {
-                if (fe.Visibility == Visibility.Visible)
-                    StatusBar.MinHeight = Math.Max(StatusBar.MinHeight, fe.ActualHeight);
-            };
-        }
-
-        DockPanel.SetDock(_aspectButton, Dock.Right);
-        DockPanel.SetDock(_screenToggle, Dock.Right);
-
-        // Кнопка вставляется первой и потому оказывается у самого края: DockPanel отдаёт
-        // правый край тому, кто пришёл раньше. Оба - перед строкой статуса, которая как
-        // последний ребёнок занимает остаток полосы.
-        StatusBar.Children.Insert(StatusBar.Children.Count - 1, _aspectButton);
-        StatusBar.Children.Insert(StatusBar.Children.Count - 1, _screenToggle);
+        // кнопка у самого края, ближе к системным кнопкам окна
+        PreviewTools.Children.Add(_screenToggle);
+        PreviewTools.Children.Add(_aspectButton);
 
         ShowBarControls(_cfg.ShowPreview);
     }
 
-    void ShowBarControls(bool on)
-    {
-        var v = on ? Visibility.Visible : Visibility.Collapsed;
-        if (_screenToggle != null) _screenToggle.Visibility = v;
-        if (_aspectButton != null) _aspectButton.Visibility = v;
-    }
+    void ShowBarControls(bool on) =>
+        PreviewTools.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
     /// Changes the window width so the preview holds the screen's own proportions.
@@ -725,28 +708,29 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// What is left of the window once the preview is gone: the section rail, the settings
-    /// page and the window frame. Added up rather than asked of the layout, because the
-    /// point is a width that does not depend on what is written in the window.
+    /// What is left of the window once the preview is gone: the left column and the
+    /// settings page. Added up rather than asked of the layout, because the point is a
+    /// width that does not depend on what is written in the window.
     ///
-    /// The rail is measured, not read: a language change rebuilds its captions, and before
-    /// the window is shown nothing has been laid out at all. DesiredSize covers its margins
-    /// either way. The page's own right margin is left out - there is no preview beside it
-    /// to keep clear of, and the window frame leaves a gap there anyway.
+    /// The page column already holds the page's right margin, and the content covers the
+    /// whole window frame, so that margin is the gap at the window edge.
     /// </summary>
-    double NarrowWidth()
+    double NarrowWidth() => LeftColumnWidth() + PageWidth;
+
+    /// <summary>
+    /// The auto-sized first column: the wider of the section rail and the program name
+    /// over it.
+    ///
+    /// Measured, not read: a language change rebuilds the section captions, and before the
+    /// window is shown nothing has been laid out at all. DesiredSize covers the margins
+    /// either way.
+    /// </summary>
+    double LeftColumnWidth()
     {
-        if (IsLoaded) UpdateLayout();
-        else if (Rail.DesiredSize.Width <= 0)
-            Rail.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-
-        // Before the window is shown there is no frame to measure, so the startup value is
-        // an estimate; Loaded runs this again and replaces it with the real one.
-        double frame = Content is FrameworkElement root && root.ActualWidth > 0
-            ? ActualWidth - root.ActualWidth
-            : 16;
-
-        return Rail.DesiredSize.Width + PageWidth + frame;
+        var any = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        Rail.Measure(any);
+        TitleName.Measure(any);
+        return Math.Max(Rail.DesiredSize.Width, TitleName.DesiredSize.Width);
     }
 
     void SaveWindowGeometry()
@@ -849,14 +833,24 @@ public partial class MainWindow : Window
             };
             panel.Children.Add(Labeled(Loc.T("main.language"), _langBox, Loc.T("main.language.note")));
 
-            // the registry is the real state; mirror it so a stale stored flag cannot make
-            // Cancel silently switch autostart back on or off
-            _cfg.Autostart = Autostart.IsEnabled();
-            panel.Children.Add(Check(Loc.T("main.autostart"), _cfg.Autostart, v =>
+            panel.Children.Add(Header(Loc.T("main.window")));
+
+            var backdropBox = new ComboBox { Margin = new Thickness(0, 2, 0, 4) };
+            foreach (var backdrop in Backdrops) backdropBox.Items.Add(Loc.T(BackdropKey(backdrop)));
+            backdropBox.SelectedIndex = Math.Max(0, Array.IndexOf(Backdrops, _cfg.Backdrop));
+            backdropBox.SelectionChanged += (_, _) =>
             {
-                _cfg.Autostart = v;
-                Autostart.Set(v);
-            }));
+                if (_rebuildingUi || backdropBox.SelectedIndex < 0) return;
+
+                // список поднимает событие и при входе в дерево, с тем же значением
+                var chosen = Backdrops[backdropBox.SelectedIndex];
+                if (chosen == _cfg.Backdrop) return;
+
+                _cfg.Backdrop = chosen;
+                ApplyBackdrop();
+                MarkDirty();
+            };
+            panel.Children.Add(Labeled(Loc.T("main.backdrop"), backdropBox, Loc.T("main.backdrop.note")));
 
             // starting minimised only makes sense together with the tray, so the option
             // follows the tray checkbox
@@ -874,46 +868,26 @@ public partial class MainWindow : Window
 
             panel.Children.Add(Check(Loc.T("main.boost"), _cfg.PreviewBoost, v => _cfg.PreviewBoost = v,
                 Loc.T("main.boost.note")));
-            var diagHead = Text(Loc.T("main.diag.head"));
-            diagHead.FontWeight = FontWeights.Bold;
-            diagHead.Margin = new Thickness(0, 14, 0, 6);
-            panel.Children.Add(diagHead);
 
-            // detail follows the block it belongs to, the way "start minimised" follows
-            // the tray checkbox
-            CheckBox detailed = null!;
-            CheckBox placed = null!;
-            panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v =>
+            panel.Children.Add(Header(Loc.T("main.startup")));
+
+            // the registry is the real state; mirror it so a stale stored flag cannot make
+            // Cancel silently switch autostart back on or off
+            _cfg.Autostart = Autostart.IsEnabled();
+            panel.Children.Add(Check(Loc.T("main.autostart"), _cfg.Autostart, v =>
             {
-                _cfg.ShowStats = v;
-                detailed.IsEnabled = v;
-                placed.IsEnabled = v;
-                if (!v) detailed.IsChecked = false;
-            }, Loc.T("main.stats.note")));
+                _cfg.Autostart = v;
+                Autostart.Set(v);
+            }));
 
-            panel.Children.Add(Check(Loc.T("main.stats.place"), _cfg.StatsUnderPreview, v =>
-            {
-                _cfg.StatsUnderPreview = v;
-                PlaceStats();
-            }, Loc.T("main.stats.place.note"), out placed));
-            placed.IsEnabled = _cfg.ShowStats;
+            panel.Children.Add(Header(Loc.T("main.settings"), Loc.T("main.settings.note")));
 
-            panel.Children.Add(Check(Loc.T("main.stats.detailed"), _cfg.DetailedStats,
-                v => _cfg.DetailedStats = v, Loc.T("main.stats.detailed.note"), out detailed));
-            detailed.IsEnabled = _cfg.ShowStats;
-
-            panel.Children.Add(Check(Loc.T("main.log"), _cfg.WriteLog, v =>
-            {
-                _cfg.WriteLog = v;
-                ProbeLog.Configure(RimlightConfig.LogPath, v);
-            }, Loc.T("main.log.note")));
-
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-            var exportBtn = new Button { Content = Loc.T("main.export"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            var exportBtn = new Button { Content = Loc.T("main.export"), Padding = new Thickness(11, 5, 11, 6), Margin = new Thickness(0, 0, 6, 0) };
             exportBtn.Click += (_, _) => ExportConfig();
-            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 0) };
+            var importBtn = new Button { Content = Loc.T("main.import"), Padding = new Thickness(11, 5, 11, 6), Margin = new Thickness(0, 0, 6, 0) };
             importBtn.Click += (_, _) => ImportConfig();
-            var resetBtn = new Button { Content = Loc.T("main.reset"), Padding = new Thickness(8, 4, 8, 4) };
+            var resetBtn = new Button { Content = Loc.T("main.reset"), Padding = new Thickness(11, 5, 11, 6) };
             resetBtn.Click += (_, _) => ResetConfig();
             row.Children.Add(exportBtn);
             row.Children.Add(importBtn);
@@ -921,20 +895,14 @@ public partial class MainWindow : Window
             row.Children.Add(HelpIcon(Loc.T("main.reset.note")));
             panel.Children.Add(row);
 
-            var pathText = Text("", dim: true);
-            var link = new System.Windows.Documents.Hyperlink(
-                new System.Windows.Documents.Run(RimlightConfig.Path));
-            StyleLink(link);
-            link.Click += (_, _) => OpenSettingsFolder();
-            pathText.Inlines.Add(Loc.T("main.paths").Replace("{0}", "").TrimEnd());
-            pathText.Inlines.Add(" ");
-            pathText.Inlines.Add(link);
-            pathText.Margin = new Thickness(0, 8, 0, 0);
-            panel.Children.Add(pathText);
+            panel.Children.Add(Header(Loc.T("main.logs"), Loc.T("main.logs.note")));
+            panel.Children.Add(Check(Loc.T("main.log"), _cfg.WriteLog, v =>
+            {
+                _cfg.WriteLog = v;
+                ProbeLog.Configure(RimlightConfig.LogPath, v);
+            }));
+            panel.Children.Add(PathLink(RimlightConfig.LogPath));
         });
-
-        // страница «Основное» только что добавлена; статистика показывается под ней
-        _mainPage = _pages[^1];
 
         AddTab(Loc.T("tab.device"), "", panel =>
         {
@@ -977,8 +945,31 @@ public partial class MainWindow : Window
 
             panel.Children.Add(Labeled(Loc.T("device.port"), _portBox));
 
-            panel.Children.Add(IntBox(Loc.T("device.baud"), _cfg.BaudRate, v => _cfg.BaudRate = v,
-                Loc.T("device.baud.note")));
+            // A value from an older settings file or a hand-edited one is kept in the list
+            // rather than replaced: the firmware it matches is already flashed.
+            var rates = new List<int>(BaudRates);
+            if (_cfg.BaudRate > 0 && !rates.Contains(_cfg.BaudRate))
+            {
+                rates.Add(_cfg.BaudRate);
+                rates.Sort();
+            }
+
+            var baudBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
+            foreach (int rate in rates)
+                baudBox.Items.Add(rate.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture).Replace(',', ' '));
+            baudBox.SelectedIndex = rates.IndexOf(_cfg.BaudRate);
+            baudBox.SelectionChanged += (_, _) =>
+            {
+                if (_rebuildingUi || baudBox.SelectedIndex < 0) return;
+
+                // список поднимает событие и при входе в дерево, с тем же значением
+                int chosen = rates[baudBox.SelectedIndex];
+                if (chosen == _cfg.BaudRate) return;
+
+                _cfg.BaudRate = chosen;
+                MarkDirty();
+            };
+            panel.Children.Add(Labeled(Loc.T("device.baud"), baudBox, Loc.T("device.baud.note")));
 
             var apply = new Button { Content = Loc.T("device.apply"), Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(8, 5, 8, 5) };
             apply.Click += (_, _) => Restart();
@@ -1117,6 +1108,16 @@ public partial class MainWindow : Window
                 v => _cfg.MinBacklight = v,
                 v => v <= 0 ? Loc.T("off") : (v * 255).ToString("0"),
                 Loc.T("color.backlight.note")));
+
+            // Потолок тока тоже про то, сколько света даёт лента. Ключ остаётся с
+            // префиксом power., по той же причине, что и color. выше.
+            panel.Children.Add(Header(Loc.T("power.supply")));
+
+            // the travel depends on how many LEDs there are, so it is rebuilt with the
+            // count rather than only at startup - the same arrangement as the offset
+            _powerHost = new StackPanel();
+            panel.Children.Add(_powerHost);
+            RebuildPowerSlider();
         });
 
         AddTab(Loc.T("tab.color"), "", panel =>
@@ -1181,7 +1182,37 @@ public partial class MainWindow : Window
             // port reopen and no bootloader pause for a checkbox.
             panel.Children.Add(Check(Loc.T("capture.publish"), _cfg.PublishFrames, v => _cfg.PublishFrames = v,
                 Loc.T("capture.publish.note")));
+
+            // The keys keep their "main." prefix from when these lived in the Main section:
+            // renaming them would drop the matching lines out of anyone's own translation.
+            panel.Children.Add(Header(Loc.T("capture.stats")));
+
+            // detail follows the block it belongs to, the way "start minimised" follows
+            // the tray checkbox
+            CheckBox detailed = null!;
+            CheckBox placed = null!;
+            panel.Children.Add(Check(Loc.T("main.stats"), _cfg.ShowStats, v =>
+            {
+                _cfg.ShowStats = v;
+                detailed.IsEnabled = v;
+                placed.IsEnabled = v;
+                if (!v) detailed.IsChecked = false;
+            }, Loc.T("main.stats.note")));
+
+            panel.Children.Add(Check(Loc.T("main.stats.place"), _cfg.StatsUnderPreview, v =>
+            {
+                _cfg.StatsUnderPreview = v;
+                PlaceStats();
+            }, Loc.T("main.stats.place.note"), out placed));
+            placed.IsEnabled = _cfg.ShowStats;
+
+            panel.Children.Add(Check(Loc.T("main.stats.detailed"), _cfg.DetailedStats,
+                v => _cfg.DetailedStats = v, Loc.T("main.stats.detailed.note"), out detailed));
+            detailed.IsEnabled = _cfg.ShowStats;
         });
+
+        // страница «Захват» только что добавлена; статистика показывается под ней
+        _capturePage = _pages[^1];
 
         AddTab(Loc.T("tab.power"), "", panel =>
         {
@@ -1194,17 +1225,6 @@ public partial class MainWindow : Window
             panel.Children.Add(Check(Loc.T("power.display"), _cfg.OffOnDisplayOff, v => _cfg.OffOnDisplayOff = v));
             panel.Children.Add(Check(Loc.T("power.lock"), _cfg.OffOnLock, v => _cfg.OffOnLock = v));
             panel.Children.Add(Check(Loc.T("power.suspend"), _cfg.OffOnSuspend, v => _cfg.OffOnSuspend = v));
-
-            var supply = Text(Loc.T("power.supply"));
-            supply.FontWeight = FontWeights.Bold;
-            supply.Margin = new Thickness(0, 14, 0, 6);
-            panel.Children.Add(supply);
-
-            // the travel depends on how many LEDs there are, so it is rebuilt with the
-            // count rather than only at startup - the same arrangement as the offset
-            _powerHost = new StackPanel();
-            panel.Children.Add(_powerHost);
-            RebuildPowerSlider();
         });
 
         AddTab(Loc.T("tab.about"), "", panel =>
@@ -1235,6 +1255,9 @@ public partial class MainWindow : Window
         _rebuildingUi = false;
         Nav.SelectedIndex = Math.Min(selected, Nav.Items.Count - 1);
         ApplyPreviewLayout();    // rebuild paths include Cancel and Import, which may flip it
+
+        // та же причина: фон мог смениться отменой, импортом или сбросом
+        ApplyBackdrop();
     }
 
     /// <summary>Each half of the scale says which of the two is running and how far.</summary>
@@ -1445,15 +1468,18 @@ public partial class MainWindow : Window
         }
     }
 
-    static void OpenSettingsFolder()
+    static void ShowInFolder(string path)
     {
         try
         {
-            // /select highlights the file itself rather than just opening the folder
+            // /select opens the folder with the file itself highlighted; without it a file
+            // that does not exist yet - a log nobody switched on - would open nothing
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "explorer.exe",
-                Arguments = $"/select,\"{RimlightConfig.Path}\"",
+                Arguments = System.IO.File.Exists(path)
+                    ? $"/select,\"{path}\""
+                    : $"\"{System.IO.Path.GetDirectoryName(path)}\"",
                 UseShellExecute = true
             });
         }
@@ -1832,7 +1858,7 @@ public partial class MainWindow : Window
         StatsCard.Visibility = _cfg.ShowStats && _cfg.StatsUnderPreview
             ? Visibility.Visible : Visibility.Collapsed;
         StatsHost.Visibility = _cfg.ShowStats && !_cfg.StatsUnderPreview
-                               && ReferenceEquals(PageHost.Content, _mainPage)
+                               && ReferenceEquals(PageHost.Content, _capturePage)
             ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateCropStatus();
@@ -1878,6 +1904,42 @@ public partial class MainWindow : Window
     {
         var t = Text(text, dim: true);
         t.Margin = new Thickness(0, 0, 0, 8);
+        return t;
+    }
+
+    /// <summary>
+    /// A group heading, which may itself carry the explanation for the group: what an export
+    /// file contains belongs to no single button.
+    /// </summary>
+    UIElement Header(string text, string? help = null)
+    {
+        var caption = Text(text);
+        caption.FontWeight = FontWeights.SemiBold;
+        caption.VerticalAlignment = VerticalAlignment.Center;
+
+        FrameworkElement header = caption;
+        if (help != null)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(caption);
+            row.Children.Add(HelpIcon(help));
+            header = row;
+        }
+
+        header.Margin = new Thickness(0, 16, 0, 6);
+        return header;
+    }
+
+    /// <summary>A file path that opens its folder with the file selected.</summary>
+    TextBlock PathLink(string path)
+    {
+        var t = Text("", dim: true);
+        t.Margin = new Thickness(0, 4, 0, 0);
+
+        var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(path));
+        StyleLink(link);
+        link.Click += (_, _) => ShowInFolder(path);
+        t.Inlines.Add(link);
         return t;
     }
 

@@ -34,7 +34,11 @@ public sealed unsafe class FramePublisher : IDisposable
     /// </summary>
     public bool Open()
     {
-        if (IsOpen) return true;
+        if (IsOpen)
+        {
+            ClaimBus();
+            return true;
+        }
 
         long now = Environment.TickCount64;
         if (now - _lastOpenAttempt < 2000) return false;
@@ -63,13 +67,34 @@ public sealed unsafe class FramePublisher : IDisposable
         *(uint*)(_ptr + FrameBus.OffMagic) = FrameBus.Magic;
         *(uint*)(_ptr + FrameBus.OffVersion) = FrameBus.Version;
         *(int*)(_ptr + FrameBus.OffSlotBytes) = FrameBus.SlotBytes;
-        *(int*)(_ptr + FrameBus.OffPid) = Environment.ProcessId;
+        ClaimBus();
 
         Status = Loc.P("открыта", "open");
         ProbeLog.Log(Loc.P("шина кадров", "frame bus"),
                      Loc.P($"{FrameBus.MapName} открыта, слот {FrameBus.SlotBytes / 1024} КБ",
                            $"{FrameBus.MapName} open, slot {FrameBus.SlotBytes / 1024} KB"));
         return true;
+    }
+
+    /// <summary>
+    /// Writes this process back into the header on every <see cref="Open"/>, not only the
+    /// first one.
+    ///
+    /// A reader decides whether the publisher is alive by that process id, and checks it
+    /// only once frames stop, which is every still screen. Whoever opened the map last owns
+    /// the field: on 12.09.2026 a second Rimlight started for a test wrote its id and was
+    /// killed, the running one never wrote its own again, and CaseLight turned the case
+    /// lighting off each time the picture stopped changing. A second copy that exits
+    /// normally zeroes the timestamp on its way out, which reads the same way, so that is
+    /// put back too.
+    /// </summary>
+    void ClaimBus()
+    {
+        int pid = Environment.ProcessId;
+        if (*(int*)(_ptr + FrameBus.OffPid) != pid) *(int*)(_ptr + FrameBus.OffPid) = pid;
+
+        if (Volatile.Read(ref *(long*)(_ptr + FrameBus.OffTimestamp)) == 0)
+            Volatile.Write(ref *(long*)(_ptr + FrameBus.OffTimestamp), Environment.TickCount64);
     }
 
     /// <param name="bgra">The reduced frame exactly as the capture backend produced it.</param>

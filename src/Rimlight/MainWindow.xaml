@@ -1,4 +1,4 @@
-﻿<Window x:Class="Rimlight.MainWindow"
+<Window x:Class="Rimlight.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Rimlight" Height="870" Width="1400" MinWidth="1317" MinHeight="820"
@@ -12,24 +12,17 @@
             <Setter Property="Padding" Value="16" />
         </Style>
     </Window.Resources>
-    <DockPanel>
-        <!-- The bar is kept out of the column grid on purpose. Spanned across the columns
-             its own width becomes a claim on them, and the first column is auto-sized: one
-             long status line would stretch that column until the settings page hung off
-             the right edge. Docked here it takes what the window has, no more. -->
-        <DockPanel x:Name="StatusBar" DockPanel.Dock="Bottom" Margin="12,0,12,8">
-            <!-- One button rather than two: at any moment only one of a pair would do
-                 anything. MinWidth keeps the caption change from shifting the status line
-                 sideways, «Стоп» being the shorter word. -->
-            <Button x:Name="OutputButton" DockPanel.Dock="Left" Padding="12,5" MinWidth="88"/>
+    <DockPanel x:Name="Root">
+        <!-- The status line is kept out of the column grid on purpose. Spanned across the
+             columns its own width becomes a claim on them, and the first column is
+             auto-sized: one long status line would stretch that column until the settings
+             page hung off the right edge. Docked here it takes what the window has, no more.
 
-            <!-- One line always: a message with a port name in it would otherwise wrap and
-                 lift the whole bar, and the bar moving about under the buttons is worse
-                 than a tail behind an ellipsis. The full text is in the tooltip. -->
-            <TextBlock x:Name="StatusText" Foreground="{StaticResource FgDim}" FontSize="14"
-                       VerticalAlignment="Center" Margin="12,0,12,0"
-                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
-        </DockPanel>
+             One line always: a message with a port name in it would otherwise wrap and lift
+             the columns above it. The full text is in the tooltip. -->
+        <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="12,0,12,8"
+                   Foreground="{StaticResource FgDim}" FontSize="14"
+                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
 
         <Grid>
             <Grid.ColumnDefinitions>
@@ -40,11 +33,45 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- left rail: the section list, sized by its longest caption; the preview
-                 toggle sits at the bottom because the preview belongs to no one section -->
-            <DockPanel x:Name="Rail" Grid.Column="0" Margin="6,12,6,12">
-                <CheckBox x:Name="PreviewToggle" DockPanel.Dock="Bottom" Margin="12,12,8,2"
+            <!-- The title bar is the first row of the same grid, so what stands in it lines
+                 up with the column below: the program name over the sections, the output
+                 over the page, the preview switches over the preview. Its height is
+                 MainWindow.TitleHeight. -->
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- поле рейла 6 плюс отступ пункта списка 12: логотип стоит над значками
+                 разделов, название над их подписями -->
+            <StackPanel x:Name="TitleName" Grid.Row="0" Grid.Column="0" Orientation="Horizontal"
+                        VerticalAlignment="Center" Margin="18,0,12,0">
+                <Image x:Name="TitleLogo" Width="16" Height="16" VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                <TextBlock Text="Rimlight" Foreground="{StaticResource Fg}" FontSize="12"
+                           Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Everything in the title bar drags the window except what is marked; the mark
+                 is inherited, so it goes on the panels. -->
+            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                        WindowChrome.IsHitTestVisibleInChrome="True">
+                <!-- One button rather than two: at any moment only one of a pair would do
+                     anything. MinWidth keeps the caption change from shifting the checkbox
+                     beside it, «Стоп» being the shorter word. -->
+                <Button x:Name="OutputButton" Padding="12,5" MinWidth="88"/>
+                <CheckBox x:Name="PreviewToggle" Margin="16,0,0,0" MinWidth="0"
                           Foreground="{StaticResource Fg}"/>
+            </StackPanel>
+
+            <!-- ways of looking at the preview, hidden along with it; the right margin keeps
+                 them clear of the caption buttons and is set in code -->
+            <StackPanel x:Name="PreviewTools" Grid.Row="0" Grid.Column="2" Orientation="Horizontal"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        WindowChrome.IsHitTestVisibleInChrome="True"/>
+
+            <!-- left rail: the section list, sized by its longest caption -->
+            <DockPanel x:Name="Rail" Grid.Row="1" Grid.Column="0" Margin="6,12,6,12">
                 <ListBox x:Name="Nav" Background="Transparent" BorderThickness="0"
                          VerticalAlignment="Top"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -58,7 +85,7 @@
             </DockPanel>
 
             <!-- settings page for the selected section -->
-            <Grid Grid.Column="1" Margin="0,12,12,12">
+            <Grid Grid.Row="1" Grid.Column="1" Margin="0,12,12,12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
@@ -69,7 +96,7 @@
                 <ContentControl x:Name="PageHost" Grid.Row="0"/>
 
                 <!-- Second home for the statistics, for when they are not under the zone
-                     map. A row of the column rather than the last thing on the Main page:
+                     map. A row of the column rather than the last thing on the Capture page:
                      inside the page it scrolled away with the settings, and the numbers
                      are watched while the settings above them are being turned. -->
                 <Border x:Name="StatsHost" Grid.Row="1" Style="{StaticResource Card}"
@@ -104,7 +131,7 @@
             </Grid>
 
             <!-- preview and statistics -->
-            <Grid x:Name="RightColumn" Grid.Column="2" Margin="0,12,12,12">
+            <Grid x:Name="RightColumn" Grid.Row="1" Grid.Column="2" Margin="0,12,12,12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>

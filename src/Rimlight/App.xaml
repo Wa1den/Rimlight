@@ -4,8 +4,9 @@
              StartupUri="MainWindow.xaml"
              ThemeMode="System">
     <Application.Resources>
-        <!-- Semantic aliases over the Fluent theme colour tokens. DynamicResource on the
-             Colour keeps every brush following the system light/dark switch at runtime. -->
+        <!-- Semantic aliases over the Fluent theme colour tokens. The DynamicResource on the
+             Colour is resolved once, when the brush is made; a theme switch at run time
+             reaches these brushes through Ui.WatchTheme, which lists them all. -->
         <SolidColorBrush x:Key="Fg" Color="{DynamicResource TextFillColorPrimary}" />
         <SolidColorBrush x:Key="FgDim" Color="{DynamicResource TextFillColorSecondary}" />
         <SolidColorBrush x:Key="Warn" Color="{DynamicResource SystemFillColorCaution}" />

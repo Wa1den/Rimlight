@@ -18,6 +18,48 @@ public enum CaptureMode
     GdiOnly
 }
 
+/// <summary>
+/// The material Windows fills the window background with.
+///
+/// There is no plain colour among them. The system caption buttons are drawn under the
+/// client area, so an opaque window background covers them, and with the background left
+/// transparent and no material the frame shows through black in either theme.
+/// </summary>
+public enum WindowBackdrop
+{
+    Mica,
+
+    /// <summary>Mica tinted more strongly, the one Windows gives windows with tabs in the title bar.</summary>
+    MicaAlt,
+    Acrylic
+}
+
+/// <summary>
+/// Reads the backdrop by name, falling back to the default on a name it does not know.
+///
+/// The stock enum converter throws on an unknown name, and <see cref="RimlightConfig.Load"/>
+/// answers any exception with default settings - a file from a later version with one more
+/// material in the list would cost every hand-tuned value in it.
+/// </summary>
+sealed class WindowBackdropConverter : JsonConverter<WindowBackdrop>
+{
+    public override WindowBackdrop Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            int n = reader.GetInt32();
+            return Enum.IsDefined(typeof(WindowBackdrop), n) ? (WindowBackdrop)n : WindowBackdrop.MicaAlt;
+        }
+
+        return Enum.TryParse(reader.GetString(), ignoreCase: true, out WindowBackdrop value)
+            ? value
+            : WindowBackdrop.MicaAlt;
+    }
+
+    public override void Write(Utf8JsonWriter writer, WindowBackdrop value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value.ToString());
+}
+
 public sealed class RimlightConfig
 {
     // ---- device -------------------------------------------------------------
@@ -311,6 +353,8 @@ public sealed class RimlightConfig
     /// </summary>
     public bool MinimizeToTray { get; set; }
 
+    public WindowBackdrop Backdrop { get; set; } = WindowBackdrop.MicaAlt;
+
     /// <summary>Open straight into the tray - useful together with autostart.</summary>
     public bool StartMinimized { get; set; }
     public bool Autostart { get; set; }
@@ -386,7 +430,10 @@ public sealed class RimlightConfig
     static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() }
+
+        // The list is walked front to back and the first converter that accepts the type
+        // wins. JsonStringEnumConverter claims every enum, so the lenient one stands ahead.
+        Converters = { new WindowBackdropConverter(), new JsonStringEnumConverter() }
     };
 
     /// <summary>

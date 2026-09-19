@@ -138,9 +138,8 @@ public sealed class CropDetector
             // ends of every row are black, which is pillarboxing seen edge-on rather than a
             // bar above and below. Nothing to crop vertically.
             if (a + b < height - 1)
-                // Bars come in pairs. Taking the smaller of the two makes the crop symmetric
-                // and, where a scene merely happens to be dark at one end, keeps it honest.
-                top = bottom = Fraction(Math.Min(a, b), height, s);
+                top = bottom = Fraction(Pair(image, width, height, stride, s.BlackLevel,
+                                             rows: true, a, b, 0, 0), height, s);
         }
 
         if (s.Horizontal)
@@ -156,7 +155,8 @@ public sealed class CropDetector
             int b = DarkCols(image, width, y0, y1, stride, s.BlackLevel, overlook, fromLeft: false);
 
             if (a + b < width - 1)
-                left = right = Fraction(Math.Min(a, b), width, s);
+                left = right = Fraction(Pair(image, width, height, stride, s.BlackLevel,
+                                             rows: false, a, b, y0, y1), width, s);
         }
 
         var target = new CropRect(left, top, 1 - right, 1 - bottom);
@@ -193,6 +193,61 @@ public sealed class CropDetector
         if (f * 100.0 < s.MinPercent) return 0;
         return Math.Min(f + Math.Max(0, s.InsetPercent) / 100.0, s.MaxPercent / 100.0);
     }
+
+    /// <summary>
+    /// Dark lines the far side must show just short of the edge the near side found. Two
+    /// rather than one: a single line can go dark by chance inside a picture, and the mip
+    /// reduction smears the edge itself over one more.
+    /// </summary>
+    const int EdgeGap = 2;
+
+    /// <summary>
+    /// Settles the two sides of one axis into one symmetric bar.
+    ///
+    /// Bars come in pairs, and the smaller of the two is the safe answer: where a scene
+    /// merely happens to be dark at one end, it keeps the crop honest. It fails when
+    /// something longer than the overlook is drawn over one bar - a game prints the name of
+    /// the radio station in the bottom bar, 8 lines of the 90 in a reduced frame against 7
+    /// allowed at 8%, and the scan on that side stops at the caption.
+    ///
+    /// So the deeper side is believed when the shallow one shows an edge at the same depth:
+    /// dark lines just short of it, picture from it on. A caption leaves exactly that - a
+    /// dark gap between it and the picture - while a scene that is simply dark at one end
+    /// would have to go dark and light again precisely where the other bar ends. The
+    /// shallow side must also be dark at its very edge: a picture reaching the screen edge
+    /// is not a bar, whatever the other side says.
+    /// </summary>
+    static int Pair(ReadOnlySpan<byte> image, int width, int height, int stride, int level,
+                    bool rows, int a, int b, int y0, int y1)
+    {
+        int bar = Math.Min(a, b), deep = Math.Max(a, b);
+        if (bar == 0 || deep == bar) return bar;
+
+        int count = rows ? height : width;
+        bool fromStart = a < b;
+
+        // the reduction blurs the edge by a line, so the far side may sit one off
+        for (int shift = -1; shift <= 1; shift++)
+        {
+            int edge = deep + shift;
+            if (edge - EdgeGap < 0 || edge >= count / 2) continue;
+
+            bool found = !LineIsDark(image, width, stride, level, rows, Index(edge), y0, y1);
+            for (int k = edge - EdgeGap; found && k < edge; k++)
+                found = LineIsDark(image, width, stride, level, rows, Index(k), y0, y1);
+
+            if (found) return deep;
+        }
+
+        return bar;
+
+        int Index(int depth) => fromStart ? depth : count - 1 - depth;
+    }
+
+    static bool LineIsDark(ReadOnlySpan<byte> image, int width, int stride, int level,
+                           bool rows, int index, int y0, int y1) =>
+        rows ? RowIsDark(image, index, width, stride, level)
+             : ColIsDark(image, index, y0, y1, stride, level);
 
     static int Portion(double percent, int side) =>
         Math.Max(0, (int)Math.Round(percent / 100.0 * side));

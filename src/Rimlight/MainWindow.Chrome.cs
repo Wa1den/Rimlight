@@ -116,6 +116,13 @@ public partial class MainWindow
             _ => DWMSBT_TABBEDWINDOW
         };
         DwmSetWindowAttribute(_hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref type, sizeof(int));
+
+        // With "show accent colour on title bars" switched on in Windows, DWM fills the
+        // caption with that colour over the content, a band of the standard caption height
+        // across the top of the window. No colour at all leaves the material showing
+        // through; the window border keeps the accent.
+        int none = DWMWA_COLOR_NONE;
+        DwmSetWindowAttribute(_hwnd, DWMWA_CAPTION_COLOR, ref none, sizeof(int));
     }
 
     IntPtr ChromeHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -165,7 +172,10 @@ public partial class MainWindow
     const int WM_DWMCOLORIZATIONCOLORCHANGED = 0x0320;
 
     const int DWMWA_CAPTION_BUTTON_BOUNDS = 5;
+    const int DWMWA_CAPTION_COLOR = 35;
     const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+
+    const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
 
     const int DWMSBT_MAINWINDOW = 2;
     const int DWMSBT_TRANSIENTWINDOW = 3;

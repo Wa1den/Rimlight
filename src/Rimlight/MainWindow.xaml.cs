@@ -1268,6 +1268,8 @@ public partial class MainWindow : Window
                 "https://github.com/Wa1den/Rimlight"));
             panel.Children.Add(LinkLine(Loc.T("about.firmware"),
                 "https://github.com/AlexGyver/Arduino_Ambilight"));
+            panel.Children.Add(LinkLine(Loc.T("about.firmware.awa"),
+                "https://github.com/awawa-dev/HyperSerialPico"));
         });
 
         _rebuildingUi = false;

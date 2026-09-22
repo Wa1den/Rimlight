@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "38";
+    const string Version = "39";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -253,14 +253,15 @@ public static class Loc
         ["main.startmin"] = "Запускать свёрнутым в трей",
         ["about.head"] = "Rimlight",
         ["about.version"] = "Версия {0}",
-        ["about.text"] = "Программа фоновой подсветки монитора: цвета по краям экрана усредняются по зонам и отправляются на адресную светодиодную ленту через COM-порт по протоколу Adalight.",
+        ["about.text"] = "Программа фоновой подсветки монитора: цвета по краям экрана усредняются по зонам и отправляются на адресную светодиодную ленту через контроллер на COM-порту. Поддерживаются два протокола контроллера: Adalight для Arduino и AWA для плат на RP2040 и ESP32 с прошивками HyperSerial.",
         ["about.text2"] = "Захват экрана выполняется методами Desktop Duplication, Windows Graphics Capture и GDI с автоматическим переключением, если текущий метод перестаёт выдавать кадры. Кадры могут передаваться модулю подсветки корпуса.",
         ["about.updates"] = "Проверять обновления при запуске",
         ["update.available"] = "Вышла версия {0}.",
         ["update.open"] = "Открыть страницу релиза",
         ["update.hide"] = "Скрыть до следующего запуска",
         ["about.repo"] = "Репозиторий проекта:",
-        ["about.firmware"] = "Прошивка контроллера и исходная задумка:",
+        ["about.firmware"] = "Прошивка для Arduino и исходная задумка:",
+        ["about.firmware.awa"] = "Прошивка для плат на RP2040:",
         ["main.stats"] = "Отображать статистику",
         ["capture.stats"] = "Статистика",
         ["main.stats.detailed"] = "Подробная статистика",
@@ -472,14 +473,15 @@ public static class Loc
         ["main.startmin"] = "Start minimised to tray",
         ["about.head"] = "Rimlight",
         ["about.version"] = "Version {0}",
-        ["about.text"] = "Monitor bias lighting software: colours along the screen edges are averaged per zone and sent to an addressable LED strip over a serial port using the Adalight protocol.",
+        ["about.text"] = "Monitor bias lighting software: colours along the screen edges are averaged per zone and sent to an addressable LED strip through a controller on a serial port. Two controller protocols are supported: Adalight for Arduino and AWA for RP2040 and ESP32 boards running the HyperSerial firmwares.",
         ["about.text2"] = "Screen capture uses Desktop Duplication, Windows Graphics Capture and GDI, switching automatically when the current method stops delivering frames. Frames can be shared with the case lighting module.",
         ["about.updates"] = "Check for updates at startup",
         ["update.available"] = "Version {0} has been released.",
         ["update.open"] = "Open the release page",
         ["update.hide"] = "Hide until the next start",
         ["about.repo"] = "Project repository:",
-        ["about.firmware"] = "Controller firmware and the original idea:",
+        ["about.firmware"] = "Arduino firmware and the original idea:",
+        ["about.firmware.awa"] = "Firmware for RP2040 boards:",
         ["main.stats"] = "Show statistics",
         ["capture.stats"] = "Statistics",
         ["main.stats.detailed"] = "Detailed statistics",

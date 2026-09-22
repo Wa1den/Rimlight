@@ -1,22 +1,46 @@
 # Rimlight
 
 Фоновая подсветка монитора для Windows. Программа захватывает изображение экрана,
-усредняет цвет по зонам вдоль краёв и отправляет результат на адресную светодиодную ленту
-через COM-порт по протоколу Adalight. Этот протокол поддерживают распространённые прошивки
-для Arduino.
+усредняет цвет по зонам вдоль его краёв и отправляет результат на адресную светодиодную
+ленту за монитором. Цвета на ленте повторяют края экрана в играх, фильмах и на рабочем
+столе, в окне и на весь экран.
+
+Лента подключается через контроллер на COM-порту. Поддерживаются два протокола:
+
+- **Adalight** — стоковый протокол прошивок для Arduino, например
+  [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight);
+- **AWA** — его расширение с контрольной суммой кадра, для плат с USB на кристалле:
+  прошивки [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico) для RP2040 и
+  [HyperSerialESP32](https://github.com/awawa-dev/HyperSerialESP32). Кадр идёт по USB без
+  ограничений последовательного порта и поэтому доходит до ленты быстрее, а повреждённый в
+  пути кадр отбрасывается и не показывается.
 
 *[English version below](#rimlight-english)*
 
 ![Окно Rimlight: слева настройки, справа превью зон с номерами по краям и строка состояния с замерами захвата](pics/interface.jpg)
 
 Железная часть и сама идея взяты из проекта AlexGyver
-[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight заменяет
-только программу на компьютере и работает с той же прошивкой без изменений.
+[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). По протоколу Adalight
+Rimlight работает с той же прошивкой без изменений.
 
 Написан на замену [Prismatik](https://github.com/psieg/Lightpack) — ради скорости и
-гибкости захвата изображения.
+гибкости захвата изображения. По замеру камерой на 240 кадров в секунду смена цвета доходит
+до ленты за 10–20 мс с Arduino, а с контроллером AWA лента меняет цвет на несколько
+миллисекунд раньше самого экрана.
 
-## Как это работает
+## Возможности
+
+**Два протокола контроллера.** Протокол выбирается в разделе «Устройство». Плата AWA
+подключается без паузы на перезагрузку, число диодов берёт из заголовка кадра, а при
+подключении сообщает версию своей прошивки. Раскладка, яркость, цвет и порт запоминаются для
+каждого протокола отдельно, так что между двумя контроллерами можно переключаться без
+перенастройки. В списке портов остаются только платы, подходящие протоколу: они различаются
+по производителю USB, без опроса чужих устройств.
+
+**Задержка.** Кадр забирается в момент, когда Windows его собрала, то есть раньше, чем его
+показывает монитор: тому ещё предстоят ожидание развёртки, сама развёртка сверху вниз,
+обработка и переключение пикселей матрицы. С Arduino на 1 Мбод путь до ленты длиннее этого,
+с контроллером AWA — короче, поэтому лента опережает экран.
 
 **Резервные методы захвата.** Основной метод — Desktop Duplication. Если он перестаёт
 выдавать кадры, источник переключается на Windows Graphics Capture, затем на GDI, и
@@ -48,20 +72,26 @@
 
 - Windows 10 2004 или новее (лучше Windows 11)
 - [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
-- Контроллер ленты на COM-порту с прошивкой, поддерживающей Adalight — например Arduino с
-  [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Прошивка в этот
-  репозиторий не входит.
+- Контроллер ленты на COM-порту: Arduino с прошивкой Adalight, например
+  [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight), или плата на RP2040 с
+  прошивкой [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico). Выход RP2040 даёт
+  3,3 В, а ленте нужны 5, поэтому между ними ставится сдвигатель уровня — буфер вроде
+  SN74AHCT125 — или берётся плата, где он уже есть. Прошивки в этот репозиторий не входят.
 
-Формат кадра на проводе — стоковый Adalight:
+Формат кадра на проводе:
 
 ```
-'A' 'd' 'a'  hi  lo  chk        chk = hi ^ lo ^ 0x55,  hi/lo кодируют (N - 1)
-далее N x (R, G, B)
+Adalight  'A' 'd' 'a'  hi  lo  chk     chk = hi ^ lo ^ 0x55,  hi/lo кодируют (N - 1)
+          далее N x (R, G, B)
+
+AWA       'A' 'w' 'a'  hi  lo  chk     то же
+          далее N x (R, G, B), затем f1 f2 fext — суммы Флетчера по байтам пикселей
 ```
 
-На скорости 1 Мбод кадр для 122 диодов занимает 372 байта, то есть 3,7 мс на проводе;
-вместе с 3,7 мс на защёлкивание ленты это даёт максимум около 135 кадров в секунду —
-больше, чем выдаёт захват.
+На скорости 1 Мбод кадр Adalight для 122 диодов занимает 372 байта, то есть 3,7 мс на
+проводе; вместе с 3,7 мс на защёлкивание ленты это даёт максимум около 135 кадров в
+секунду. Плата AWA получает кадр по USB за доли миллисекунды и выводит его на ленту, пока
+принимает следующий, поэтому её период — около 4 мс.
 
 ## Сборка
 
@@ -79,9 +109,12 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 
 ## Настройка
 
-1. **Устройство** — выбрать монитор и COM-порт, нажать «Применить и переподключиться».
-   Монитор запоминается по модели из EDID, поэтому перестановка кабеля между разъёмами
-   видеокарты не переводит захват на другой экран.
+1. **Устройство** — выбрать монитор, протокол контроллера и COM-порт, нажать «Применить и
+   переподключиться». Монитор запоминается по модели из EDID, поэтому перестановка кабеля
+   между разъёмами видеокарты не переводит захват на другой экран. В списке портов только
+   платы, подходящие протоколу; скорость порта задаётся только для Adalight. Смена протокола
+   сразу переподключает ленту и подставляет запомненные для него раскладку, яркость, цвет и
+   порт.
 2. **Раскладка** — задать число диодов по сторонам, стартовый угол и направление. Кнопка
    **«Показать схему на экране»** накладывает пронумерованные зоны выборки поверх экрана;
    клик по ячейке подсвечивает её зелёным. Схема попадает в захват как обычное
@@ -106,7 +139,7 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
    периода: замер камерой на 240 кадров в секунду даёт около 30 мс от смены цвета на
    экране до смены на ленте при пределе 60 и 10–20 мс в положении **«без ограничения»**,
    которое стоит по умолчанию. Без ограничения частота упирается в период контроллера —
-   около 7 мс на 122 диода при 1 Мбод. Ограничение уменьшает число сводов кадра на
+   около 7 мс на 122 диода у Arduino на 1 Мбод и около 4 мс у платы AWA. Ограничение уменьшает число сводов кадра на
    видеокарте, так что на слабой карте или в тяжёлой игре оно может оказаться полезным.
    Ползунок **«Размытие и резкость»** работает по кадру до выборки зон: влево кадр
    расфокусируется, и соседние участки ленты переливаются друг в друга, вправо соседние
@@ -121,7 +154,8 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 сейчас: идёт ли вывод и с какой частотой, остановлен ли он и почему, открылся ли порт.
 
 Кнопка **«По умолчанию»** в разделе «Основное» возвращает настройки к стандартным, не
-трогая выбор монитора и порта, раскладку ленты, язык и положение окна.
+трогая монитор, протокол и порт, раскладку ленты, язык, положение окна и настройки другого
+протокола.
 
 Галка **«Проверять обновления при запуске»** в разделе «О программе» по умолчанию
 выключена: это единственное обращение программы в сеть, и наружу уходит только номер
@@ -132,9 +166,9 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 раскладку целиком: каждый участок ленты должен повторять цвет ближайшего к нему края
 экрана.
 
-Суммарное число диодов должно совпадать с `NUM_LEDS` в прошивке: стоковые скетчи Adalight
-читают фиксированное число байт независимо от заголовка, поэтому при расхождении
-изображение смещается вдоль ленты.
+Для Adalight суммарное число диодов должно совпадать с `NUM_LEDS` в прошивке: стоковые
+скетчи читают фиксированное число байт независимо от заголовка, поэтому при расхождении
+изображение смещается вдоль ленты. Прошивки AWA берут число диодов из заголовка кадра.
 
 Настройки, лог и файлы переводов хранятся в `%APPDATA%\Rimlight\`.
 
@@ -191,6 +225,7 @@ src/Rimlight        приложение: раскладка, цвет, COM-по
 src/Rimlight.Core   бэкенды захвата, конвейер цвета, шина кадров, локализация
 tools/CaptureProbe  диагностика: все методы захвата рядом, с замерами
 tools/LatencyProbe  замер задержки «экран → лента» камерой на 240 к/с
+tools/AwaProbe      проверка контроллера AWA без основной программы
 lang                шаблоны переводов, они же пишутся в %APPDATA%
 ```
 
@@ -203,6 +238,12 @@ lang                шаблоны переводов, они же пишутс�
 миллисекунд. Съёмка экрана и ленты одним кадром на 240 к/с даёт сквозную задержку
 снаружи — вместе с прошивкой и матрицей, там где внутренняя статистика заканчивается на
 записи в порт.
+
+`tools/AwaProbe` проверяет плату с прошивкой HyperSerialPico отдельно от Rimlight:
+запрашивает приветствие прошивки, проводит ленту через сплошные цвета и бегущую точку и
+читает счётчики самого контроллера — сколько кадров принято и сколько пришло битыми. Так
+неисправность железа отделяется от ошибки в том, что шлёт программа. Порядок проверки — в
+его README.
 
 ## Шина кадров
 
@@ -217,6 +258,11 @@ lang                шаблоны переводов, они же пишутс�
 
 - [AlexGyver / Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight) —
   конструкция железа, прошивка и сама идея.
+- [awawa-dev / HyperHDR](https://github.com/awawa-dev/HyperHDR) — протокол AWA и прошивки
+  [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico) и
+  [HyperSerialESP32](https://github.com/awawa-dev/HyperSerialESP32) для контроллеров ленты; из
+  разбора HyperHDR взяты предел тока, минимальная подсветка и запас от полосы при
+  кадрировании.
 - [psieg / Lightpack (Prismatik)](https://github.com/psieg/Lightpack) — предшественник;
   его код захвата помог разобраться в части описанных здесь проблем.
 - [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows) — привязки Direct3D 11
@@ -235,20 +281,45 @@ MIT — см. [LICENSE](LICENSE).
 # Rimlight (English)
 
 Screen-driven ambient lighting for Windows. The program captures the screen, averages
-colours over zones along the edges and sends the result to an addressable LED strip over a
-serial port using the Adalight protocol. The protocol is supported by common Arduino
-firmware.
+colours over zones along its edges and sends the result to an addressable LED strip behind
+the monitor. The colours on the strip repeat the edges of the screen in games, films and on
+the desktop, windowed or full screen.
+
+The strip is driven by a controller on a serial port. Two protocols are supported:
+
+- **Adalight** — the stock protocol of the Arduino firmwares, for example
+  [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight);
+- **AWA** — its extension with a frame checksum, for boards with USB on the chip: the
+  [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico) firmware for RP2040 and
+  [HyperSerialESP32](https://github.com/awawa-dev/HyperSerialESP32). The frame travels over USB
+  without the limits of a serial line, so it reaches the strip sooner, and a frame damaged
+  on the way is dropped rather than shown.
 
 ![The Rimlight window: settings on the left, the zone preview with numbered cells along the edges and a status area with capture metrics on the right](pics/interface.jpg)
 
 The hardware side and the original idea come from AlexGyver's
-[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Rimlight replaces only
-the PC program and works with the same firmware unchanged.
+[Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). Over Adalight, Rimlight
+works with the same firmware unchanged.
 
 Written as a replacement for [Prismatik](https://github.com/psieg/Lightpack), aiming at
-faster and more flexible screen capture.
+faster and more flexible screen capture. Measured with a camera at 240 fps, a colour change
+reaches the strip in 10-20 ms with an Arduino, and with an AWA controller the strip changes a
+few milliseconds before the screen itself.
 
-## How it works
+## Features
+
+**Two controller protocols.** The protocol is chosen in the Device section. An AWA board
+connects without a pause for a reboot, takes the LED count from the frame header and reports
+its firmware version on connecting. Layout, brightness, colour and port are kept separately
+for each protocol, so the two controllers can be switched between without setting anything
+up again. The port list only offers boards that fit the protocol: they are told apart by
+their USB vendor, without querying anyone else's devices.
+
+**Latency.** A frame is taken the moment Windows has composed it, before the monitor shows
+it: the monitor still has to wait for its refresh, scan the frame out top to bottom, process
+it and switch the pixels of the panel. With an Arduino at 1 Mbaud the way to the strip is
+longer than that; with an AWA controller it is shorter, and the strip gets ahead of the
+screen.
 
 **Fallback capture methods.** Desktop Duplication is the primary method. If it stops
 delivering frames, the source switches to Windows Graphics Capture and then to GDI, and
@@ -280,20 +351,27 @@ dark scene would be read as a bar.
 
 - Windows 10 2004 or newer (Windows 11 recommended)
 - [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
-- An Adalight-compatible LED controller on a serial port — for example an Arduino running
-  [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight). The firmware is not
-  part of this repository.
+- An LED controller on a serial port: an Arduino running Adalight firmware, for example
+  [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight), or an RP2040 board
+  running [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico). The RP2040 output is
+  3.3 V and the strip wants 5, so a level shifter goes between them - a buffer such as the
+  SN74AHCT125 - or a board that already has one is used. The firmware is not part of this
+  repository.
 
-The frame format on the wire is stock Adalight:
+The frame format on the wire:
 
 ```
-'A' 'd' 'a'  hi  lo  chk        chk = hi ^ lo ^ 0x55,  hi/lo encode (N - 1)
-then N x (R, G, B)
+Adalight  'A' 'd' 'a'  hi  lo  chk     chk = hi ^ lo ^ 0x55,  hi/lo encode (N - 1)
+          then N x (R, G, B)
+
+AWA       'A' 'w' 'a'  hi  lo  chk     the same
+          then N x (R, G, B), then f1 f2 fext - Fletcher sums over the pixel bytes
 ```
 
-At 1 Mbaud a 122-LED frame takes 372 bytes, that is 3.7 ms on the wire; together with
-another 3.7 ms to latch into the strip that allows up to about 135 frames per second —
-more than capture produces.
+At 1 Mbaud a 122-LED Adalight frame takes 372 bytes, that is 3.7 ms on the wire; together
+with another 3.7 ms to latch into the strip that allows up to about 135 frames per second.
+An AWA board receives the frame over USB in a fraction of a millisecond and drives the strip
+while it takes in the next one, so its period is about 4 ms.
 
 ## Building
 
@@ -311,9 +389,12 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
 
 ## Setup
 
-1. **Device** — pick the monitor and the serial port, press *Apply and reconnect*. The
-   monitor is remembered by its EDID model, so moving a cable between ports of the
-   graphics card does not point the capture at a different screen.
+1. **Device** — pick the monitor, the controller protocol and the serial port, press
+   *Apply and reconnect*. The monitor is remembered by its EDID model, so moving a cable
+   between ports of the graphics card does not point the capture at a different screen. The
+   port list only offers boards that fit the protocol; the baud rate is set for Adalight
+   only. Switching the protocol reconnects the strip at once and brings back the layout,
+   brightness, colour and port kept for it.
 2. **Layout** — enter the LED count per side, the start corner and the direction. The
    *Show map on screen* button overlays numbered sampling zones on the screen; clicking a
    cell highlights it in green. The map is captured like any other image, so a green LED on
@@ -337,7 +418,8 @@ Add `--self-contained true` for a machine without the .NET runtime installed.
    dropped, so a limit adds up to one of its own periods to the output delay: measured with
    a camera at 240 fps, a change takes about 30 ms to reach the strip with the limit at 60
    and 10-20 ms at **no limit**, which is the default. With no limit the rate meets the
-   controller's own period instead - about 7 ms for 122 LEDs at 1 Mbaud. A limit cuts the
+   controller's own period instead - about 7 ms for 122 LEDs on an Arduino at 1 Mbaud and
+   about 4 ms on an AWA board. A limit cuts the
    number of frame reductions done on the graphics card, which can be worth having on a
    weak card or in a demanding game. The **Blur and sharpness** slider works on the frame
    before the zones are read off it: to the left the frame is defocused and neighbouring
@@ -354,8 +436,8 @@ stands what is happening now: whether the output is running and at what rate, wh
 stopped and why, and whether the port opened.
 
 The **Defaults** button in the General section puts the settings back to their standard
-values, leaving the chosen monitor and port, the strip layout, the language and the window
-position alone.
+values, leaving the monitor, the protocol and port, the strip layout, the language, the
+window position and the other protocol's settings alone.
 
 The **Check for updates at startup** box in the About section is off by default: it is the
 only request the program makes outside the machine, and the only thing sent out is the
@@ -365,8 +447,9 @@ For a check against a real frame, `pics/Rainbow.jpg` is an image with saturated 
 in every part of the frame. Set as the desktop background, it shows the whole layout at
 once: every part of the strip should repeat the colour of the screen edge nearest to it.
 
-The LED total must match `NUM_LEDS` in the firmware: stock Adalight sketches read a fixed
-number of bytes regardless of the header, so a mismatch shifts the picture along the strip.
+With Adalight the LED total must match `NUM_LEDS` in the firmware: stock sketches read a
+fixed number of bytes regardless of the header, so a mismatch shifts the picture along the
+strip. AWA firmwares take the LED count from the frame header.
 
 Settings, the log and translation files are stored in `%APPDATA%\Rimlight\`.
 
@@ -424,6 +507,7 @@ src/Rimlight        the application: layout, colour, serial, UI
 src/Rimlight.Core   capture backends, colour pipeline, frame bus, localisation
 tools/CaptureProbe  diagnostic tool: every capture method side by side, with metrics
 tools/LatencyProbe  screen-to-strip latency, measured with a 240 fps phone camera
+tools/AwaProbe      AWA controller check without the main program
 lang                translation templates, also written to %APPDATA%
 ```
 
@@ -435,6 +519,12 @@ measurement results are collected in its README.
 colour every few seconds and runs a millisecond clock beside it. Filming the screen and
 the strip in one shot at 240 fps gives the end-to-end latency from outside - firmware and
 panel included, where the built-in statistics stop at the serial write.
+
+`tools/AwaProbe` checks a board running HyperSerialPico apart from Rimlight: it asks the
+firmware to introduce itself, walks the strip through solid colours and a running dot, and
+reads the controller's own counters - how many frames arrived and how many were damaged.
+That separates a hardware fault from a mistake in what the program sends. The procedure is
+in its README.
 
 ## Frame bus
 
@@ -449,6 +539,10 @@ and renaming it would break compatibility.
 
 - [AlexGyver / Arduino_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight) — the
   hardware build, the firmware and the original idea.
+- [awawa-dev / HyperHDR](https://github.com/awawa-dev/HyperHDR) — the AWA protocol and the
+  [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico) and
+  [HyperSerialESP32](https://github.com/awawa-dev/HyperSerialESP32) controller firmwares; the
+  current ceiling, the minimum backlight and the crop margin come from studying HyperHDR.
 - [psieg / Lightpack (Prismatik)](https://github.com/psieg/Lightpack) — the predecessor;
   its capture code helped in understanding some of the problems described here.
 - [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows) — Direct3D 11 and DXGI

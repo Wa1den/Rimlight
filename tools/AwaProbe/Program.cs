@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -21,9 +22,34 @@ static class Program
 {
     const int Fps = 60;
 
+    /// <summary>
+    /// Steps wait for a key rather than a timer. What is being checked is visual - which
+    /// LED lights first, whether red and green are swapped, where the dot stops - and two
+    /// seconds of each went by faster than anyone could look at a strip behind a monitor.
+    /// Off when input is redirected, so the tool still runs unattended from a script.
+    /// </summary>
+    static bool _interactive;
+
     static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+        _interactive = !Console.IsInputRedirected;
+
+        int code = Execute(args);
+
+        // Started by a double click the window belongs to this process alone and vanishes
+        // the moment it exits, taking the result with it.
+        if (_interactive && OwnsConsole())
+        {
+            Console.WriteLine();
+            Console.Write("Нажмите любую клавишу, чтобы закрыть окно.");
+            Console.ReadKey(true);
+        }
+        return code;
+    }
+
+    static int Execute(string[] args)
+    {
 
         string? portName = null;
         int leds = 122;
@@ -37,6 +63,9 @@ static class Program
                     return List();
                 case "--selftest":
                     return SelfTest();
+                case "--auto":
+                    _interactive = false;
+                    break;
                 case "--leds" when i + 1 < args.Length && int.TryParse(args[i + 1], out int n) && n is >= 1 and <= 4096:
                     leds = n; i++;
                     break;
@@ -70,6 +99,12 @@ static class Program
             Line($"Порт {portName} не открылся: {ex.Message}", ConsoleColor.Red);
             return 1;
         }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine();
+            Line("Прервано.", ConsoleColor.Yellow);
+            return 5;
+        }
     }
 
     static void Usage()
@@ -77,12 +112,13 @@ static class Program
         Console.WriteLine("""
             AwaProbe — проверка контроллера с прошивкой HyperSerialPico
 
-              AwaProbe [COMn] [--leds N] [--brightness 0..255]
+              AwaProbe [COMn] [--leds N] [--brightness 0..255] [--auto]
               AwaProbe --list        показать порты и какой из них RP2040
               AwaProbe --selftest    проверить кодирование кадра без железа
 
             Без номера порта берётся единственный подключённый RP2040.
             По умолчанию 122 диода, яркость 128 из 255.
+            Шаги переключаются клавишей, Esc прерывает; --auto — по таймеру.
             """);
     }
 
@@ -148,35 +184,42 @@ static class Program
             return 2;
         }
         Line("есть", ConsoleColor.Green);
-        Console.WriteLine("   " + Clean(hello));
+
+        // Ответ на этот запрос — строка счётчиков, а за ней приветствие; счётчики только
+        // что сброшены и ничего не говорят, поэтому показывается одно приветствие.
+        var greeting = hello.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Contains("Awa driver"));
+        Console.WriteLine("   " + (greeting ?? Clean(hello)));
         Console.WriteLine();
 
         var rgb = new byte[leds * 3];
 
-        // 2. сплошные цвета
-        Console.WriteLine("2. Сплошные цвета, по две секунды:");
-        foreach (var (name, r, g, b) in new[] { ("красный", level, 0, 0), ("зелёный", 0, level, 0), ("синий", 0, 0, level), ("белый", level, level, level) })
+        if (_interactive)
         {
-            Console.WriteLine($"   {name}");
-            Stream(port, 2 * Fps, _ => Fill(rgb, (byte)r, (byte)g, (byte)b));
+            Line("Каждый шаг держится на ленте, пока не нажата клавиша. Esc — выход.", ConsoleColor.DarkGray);
+            Console.WriteLine();
         }
+
+        // 2. сплошные цвета
+        Console.WriteLine("2. Сплошные цвета.");
+        foreach (var (name, r, g, b) in new[] { ("красный", level, 0, 0), ("зелёный", 0, level, 0), ("синий", 0, 0, level), ("белый", level, level, level) })
+            Step(port, "   " + name, 2.0, _ => Fill(rgb, (byte)r, (byte)g, (byte)b));
         Console.WriteLine("   Перепутанные красный и зелёный значат ленту с другим порядком цветов, а не ошибку пайки.");
         Console.WriteLine();
 
         // 3. первый диод и бегущая точка
-        Console.WriteLine("3. Первый диод горит красным — он должен быть у места пайки Din.");
-        Stream(port, (int)(1.5 * Fps), _ =>
+        Step(port, "3. Первый диод горит красным — он должен быть у места пайки Din.", 1.5, _ =>
         {
             Array.Clear(rgb);
             rgb[0] = (byte)level;
             return rgb;
         });
 
-        Console.WriteLine("   Зелёная точка бежит от первого диода до последнего.");
-        Stream(port, leds, f =>
+        // по кругу и вдвое медленнее, пока смотрят; без человека — один проход
+        Step(port, "   Зелёная точка бежит от первого диода до последнего.", leds / (double)Fps, f =>
         {
             Array.Clear(rgb);
-            rgb[f * 3 + 1] = (byte)level;
+            int dot = _interactive ? f / 2 % leds : Math.Min(f, leds - 1);
+            rgb[dot * 3 + 1] = (byte)level;
             return rgb;
         });
         Console.WriteLine("   Если точка останавливается, не дойдя до конца, — на этом диоде обрыв данных.");
@@ -263,6 +306,58 @@ static class Program
             int wait = (int)((f + 1) * 1000L / Fps - sw.ElapsedMilliseconds);
             if (wait > 0) Thread.Sleep(wait);
         }
+    }
+
+    /// <summary>
+    /// Shows one picture until the user moves on, or for a fixed time when nobody is at
+    /// the keyboard. The stream keeps running while it waits, so the controller's
+    /// statistics window stays open and the strip never sees a gap.
+    /// </summary>
+    static void Step(SerialPort port, string text, double autoSeconds, Func<int, byte[]> frameAt)
+    {
+        Console.Write(text);
+
+        if (!_interactive)
+        {
+            Console.WriteLine();
+            Stream(port, Math.Max(1, (int)(autoSeconds * Fps)), frameAt);
+            return;
+        }
+
+        Line("   — клавиша, дальше", ConsoleColor.DarkGray);
+
+        var sw = Stopwatch.StartNew();
+        for (int f = 0; ; f++)
+        {
+            if (Console.KeyAvailable)
+            {
+                var key = Console.ReadKey(true);
+                if (key.Key == ConsoleKey.Escape)
+                {
+                    // свой буфер: функция кадра перезаливает общий, и лента осталась бы гореть
+                    var black = new byte[frameAt(0).Length];
+                    Stream(port, 3, _ => black);
+                    throw new OperationCanceledException();
+                }
+                return;
+            }
+
+            var data = AwaFrame.Build(frameAt(f));
+            port.Write(data, 0, data.Length);
+
+            int wait = (int)((f + 1) * 1000L / Fps - sw.ElapsedMilliseconds);
+            if (wait > 0) Thread.Sleep(wait);
+        }
+    }
+
+    [DllImport("kernel32.dll")]
+    static extern uint GetConsoleProcessList(uint[] processList, uint processCount);
+
+    /// <summary>Whether this process is the only one on its console - that is, it was not started from a shell.</summary>
+    static bool OwnsConsole()
+    {
+        try { return GetConsoleProcessList(new uint[2], 2) == 1; }
+        catch { return false; }
     }
 
     static string ReadFor(SerialPort port, int ms, string until)

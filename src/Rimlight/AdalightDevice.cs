@@ -8,13 +8,19 @@ using Rimlight.Text;
 namespace Rimlight;
 
 /// <summary>
-/// Speaks the protocol the existing Gyver_Ambilight firmware already uses, unchanged:
+/// Sends frames to the strip controller in one of two protocols.
+///
+/// Stock Adalight, as the Gyver_Ambilight sketch on a Nano expects it:
 ///
 ///   'A' 'd' 'a'  hi  lo  chk        chk = hi ^ lo ^ 0x55,  hi/lo encode (N - 1)
 ///   then N x (R, G, B)
 ///
-/// At 1 Mbaud a 122-LED frame is 372 bytes, so the wire tops out around 268 fps - four
-/// times more headroom than the capture side will ever use.
+/// At 1 Mbaud a 122-LED frame is 372 bytes, so the wire tops out around 268 fps.
+///
+/// AWA, the HyperSerial firmwares' extension, differs in the second header byte and in three
+/// checksum bytes after the pixels - see <see cref="AwaFrame"/>. Those boards carry USB on the
+/// chip, so the baud rate is nominal, and they differ from the Nano in the two things that
+/// matter at the port: they read nothing unless DTR is up, and DTR does not reset them.
 /// </summary>
 public sealed class AdalightDevice : IDisposable
 {
@@ -36,6 +42,7 @@ public sealed class AdalightDevice : IDisposable
     byte[] _frame = Array.Empty<byte>();
     byte[] _lastSent = Array.Empty<byte>();
     int _ledCount;
+    DeviceProtocol _protocol;
     long _lastSendTicks;
     bool _everSent;
     string _lastFailure = "";
@@ -51,14 +58,14 @@ public sealed class AdalightDevice : IDisposable
     /// </summary>
     public bool HasError { get; private set; }
 
-    enum Link { NotConnected, Waiting, Ready, OpenFailed, Lost }
+    enum Link { NotConnected, Waiting, Ready, Silent, OpenFailed, Lost }
 
     /// <summary>
     /// State and the untranslatable half of the line - a port name or the message of an
     /// exception - kept together in one object so a reader cannot pair a new state with
     /// the previous detail. Written on the output thread, read on the UI thread.
     /// </summary>
-    sealed record LinkStatus(Link State, string Detail = "");
+    sealed record LinkStatus(Link State, string Detail = "", string Firmware = "");
 
     volatile LinkStatus _link = new(Link.NotConnected);
 
@@ -73,7 +80,9 @@ public sealed class AdalightDevice : IDisposable
     public string Status => _link.State switch
     {
         Link.Waiting => $"{_link.Detail}: " + Loc.P("жду загрузчик", "waiting for bootloader"),
-        Link.Ready => $"{_link.Detail} " + Loc.P("готов", "ready"),
+        Link.Ready => $"{_link.Detail} " + Loc.P("готов", "ready") +
+                      (_link.Firmware.Length > 0 ? ", " + _link.Firmware : ""),
+        Link.Silent => $"{_link.Detail}: " + Loc.P("прошивка не ответила по протоколу AWA", "the firmware did not answer over AWA"),
         Link.OpenFailed => Loc.P("ошибка открытия: ", "could not open: ") + _link.Detail,
         Link.Lost => Loc.P("обрыв: ", "link lost: ") + _link.Detail,
         _ => Loc.P("не подключено", "not connected")
@@ -159,43 +168,65 @@ public sealed class AdalightDevice : IDisposable
     /// Opening a closed port can pulse DTR and reboot the Nano, so a first connection waits
     /// it out. Reopening only because the LED count changed does not need that pause: the
     /// firmware resynchronises on the next "Ada" header anyway, and a 2.5 s blackout on
-    /// every keystroke in the count field would be unusable.
+    /// every keystroke in the count field would be unusable. An AWA board never reboots on
+    /// open and never waits.
     /// </param>
-    public bool Open(string portName, int baud, int ledCount, bool waitBootloader = true)
+    public bool Open(string portName, int baud, int ledCount, DeviceProtocol protocol, bool waitBootloader = true)
     {
-        lock (_io) return OpenCore(portName, baud, ledCount, waitBootloader);
+        lock (_io) return OpenCore(portName, baud, ledCount, protocol, waitBootloader);
     }
 
-    bool OpenCore(string portName, int baud, int ledCount, bool waitBootloader)
+    /// <summary>
+    /// Nominal full-speed USB, for the wire time of an AWA frame. The board's real
+    /// throughput is lower and the frame still takes well under a millisecond, which next
+    /// to the 3.7 ms the strip needs to latch 122 LEDs is all this has to say.
+    /// </summary>
+    const double UsbBitsPerSecond = 12_000_000;
+
+    bool OpenCore(string portName, int baud, int ledCount, DeviceProtocol protocol, bool waitBootloader)
     {
         Close();
         _ledCount = ledCount;
+        _protocol = protocol;
+        bool awa = protocol == DeviceProtocol.Awa;
 
         int payload = ledCount * 3;
-        _frame = new byte[6 + payload];
+        _frame = new byte[awa ? AwaFrame.Size(ledCount) : 6 + payload];
         _lastSent = new byte[payload];
         _everSent = false;
 
-        // 10 bits per byte on the wire, 30 us per WS2812 LED to latch
-        double wireMs = _frame.Length * 10.0 * 1000.0 / Math.Max(1, baud);
+        // 10 bits per byte on the wire, 30 us per WS2812 LED to latch. The AWA boards render
+        // while the next frame is arriving, but a frame sent before the previous one is on
+        // the strip only replaces it unseen, so the latch time stays the floor for both.
+        double wireMs = _frame.Length * 10.0 * 1000.0 / (awa ? UsbBitsPerSecond : Math.Max(1, baud));
         double showMs = ledCount * 0.030;
         _minGapTicks = (long)((wireMs + showMs) * Stopwatch.Frequency / 1000.0);
 
         // header is constant for a given LED count, so build it once
-        int n = ledCount - 1;
-        _frame[0] = (byte)'A'; _frame[1] = (byte)'d'; _frame[2] = (byte)'a';
-        _frame[3] = (byte)((n >> 8) & 0xFF);
-        _frame[4] = (byte)(n & 0xFF);
-        _frame[5] = (byte)(_frame[3] ^ _frame[4] ^ 0x55);
+        if (awa)
+        {
+            AwaFrame.WriteHeader(_frame, ledCount);
+        }
+        else
+        {
+            int n = ledCount - 1;
+            _frame[0] = (byte)'A'; _frame[1] = (byte)'d'; _frame[2] = (byte)'a';
+            _frame[3] = (byte)((n >> 8) & 0xFF);
+            _frame[4] = (byte)(n & 0xFF);
+            _frame[5] = (byte)(_frame[3] ^ _frame[4] ^ 0x55);
+        }
 
         try
         {
             _port = new SerialPort(portName, baud, Parity.None, 8, StopBits.One)
             {
-                // leaving these asserted resets the board on every open
-                DtrEnable = false,
-                RtsEnable = false,
+                // The Nano reboots when these go up, on every open. An AWA board is the
+                // opposite case: TinyUSB reads nothing while DTR is down (tud_cdc_connected),
+                // so every frame would be dropped without a word.
+                DtrEnable = awa,
+                RtsEnable = awa,
                 Handshake = Handshake.None,
+                ReadTimeout = 50,
                 WriteTimeout = 500,
                 WriteBufferSize = Math.Max(4096, _frame.Length * 4)
             };
@@ -220,6 +251,9 @@ public sealed class AdalightDevice : IDisposable
 
         _lastFailure = "";
         HasError = false;
+
+        if (awa) return Greet(portName);
+
         if (waitBootloader)
         {
             _link = new(Link.Waiting, portName);
@@ -232,6 +266,56 @@ public sealed class AdalightDevice : IDisposable
         }
 
         _link = new(Link.Ready, portName);
+        return true;
+    }
+
+    /// <summary>How long an AWA board is given to introduce itself. It answers in a few milliseconds.</summary>
+    const int GreetWaitMs = 500;
+
+    /// <summary>
+    /// Asks an AWA board to introduce itself, which settles whether frames will be accepted
+    /// before any are sent. Without it a wrong port or a board still on other firmware looks
+    /// exactly like a healthy one: the port opens, writes succeed, and the strip stays dark.
+    ///
+    /// Silence is reported but does not close the port. Frames go out regardless, so a board
+    /// that works but keeps quiet for some reason still lights the strip.
+    /// </summary>
+    bool Greet(string portName)
+    {
+        string reply = "";
+        try
+        {
+            _port!.DiscardInBuffer();
+            _port.Write(AwaFrame.HelloQuery, 0, AwaFrame.HelloQuery.Length);
+
+            long until = Environment.TickCount64 + GreetWaitMs;
+            while (Environment.TickCount64 < until)
+            {
+                reply += _port.ReadExisting();
+                if (reply.Contains(AwaFrame.GreetingMark) && reply.EndsWith('\n')) break;
+                Thread.Sleep(10);
+            }
+        }
+        catch (Exception ex)
+        {
+            reply = "";
+            ProbeLog.Log(Loc.P("порт", "port"), $"{portName}: " + Loc.P("приветствие не прошло: ", "greeting failed: ") + ex.Message);
+        }
+
+        string firmware = "";
+        foreach (var line in reply.Split('\n'))
+            if (line.Contains(AwaFrame.GreetingMark)) { firmware = line.Trim().TrimEnd('.'); break; }
+
+        if (firmware.Length == 0)
+        {
+            _link = new(Link.Silent, portName);
+            HasError = true;
+            ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P("открыт, но прошивка не ответила по протоколу AWA", "open, but the firmware did not answer over AWA"));
+            return true;
+        }
+
+        _link = new(Link.Ready, portName, firmware);
+        ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P("открыт, ", "open, ") + firmware);
         return true;
     }
 
@@ -301,6 +385,7 @@ public sealed class AdalightDevice : IDisposable
         int copy = Math.Min(rgb.Length, payload);
         Buffer.BlockCopy(rgb, 0, _frame, 6, copy);
         if (copy < payload) Array.Clear(_frame, 6 + copy, payload - copy);
+        if (_protocol == DeviceProtocol.Awa) AwaFrame.WriteTrailer(_frame, _ledCount);
 
         try
         {
@@ -400,12 +485,12 @@ public sealed class AdalightDevice : IDisposable
         Thread.Sleep(DrainTailMs);
     }
 
-    public bool TryReconnect(string portName, int baud, int ledCount)
+    public bool TryReconnect(string portName, int baud, int ledCount, DeviceProtocol protocol)
     {
         foreach (var name in SerialPort.GetPortNames())
             if (string.Equals(name, portName, StringComparison.OrdinalIgnoreCase))
             {
-                bool ok = Open(portName, baud, ledCount);
+                bool ok = Open(portName, baud, ledCount, protocol);
                 if (ok)
                 {
                     Reconnects++;

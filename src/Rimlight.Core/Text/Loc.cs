@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "37";
+    const string Version = "38";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -291,11 +291,16 @@ public static class Loc
         ["main.export"] = "Экспорт…",
         ["main.import"] = "Импорт…",
         ["main.reset"] = "По умолчанию",
-        ["main.reset.note"] = "Возвращает настройки к стандартным значениям. Выбор монитора и порта, раскладка ленты, язык и положение окна не затрагиваются. Как и любая другая правка, применяется сразу, а на диск попадает по кнопке «Применить».",
+        ["main.reset.note"] = "Возвращает настройки к стандартным значениям. Монитор, протокол и порт, раскладка ленты, язык и положение окна не затрагиваются, как и настройки другого протокола. Как и любая другая правка, применяется сразу, а на диск попадает по кнопке «Применить».",
         ["main.exit"] = "Выход",
 
         ["device.monitor"] = "Монитор",
+        ["device.protocol"] = "Протокол",
+        ["device.protocol.adalight"] = "Adalight — Arduino и совместимые",
+        ["device.protocol.awa"] = "AWA — HyperSerialPico, HyperSerialESP32",
+        ["device.protocol.note"] = "Adalight — стоковый протокол прошивок для Arduino. AWA — его расширение с контрольной суммой, на нём работают прошивки HyperSerialPico и HyperSerialESP32. Раскладка, яркость, цвет и порт запоминаются для каждого протокола отдельно и подставляются при переключении, лента при этом сразу переподключается. В списке портов остаются только платы, подходящие выбранному протоколу.",
         ["device.port"] = "COM-порт",
+        ["device.port.none"] = "нет подходящих устройств",
         ["device.baud"] = "Скорость, бод",
         ["device.baud.note"] = "Та же скорость должна быть выставлена в параметрах прошивки контроллера, иначе связи не будет.",
         ["device.apply"] = "Применить и переподключиться",
@@ -426,7 +431,7 @@ public static class Loc
         ["dialog.filter"] = "Настройки Rimlight (*.json)|*.json",
         ["dialog.saveFail"] = "Не удалось сохранить: ",
         ["dialog.loadFail"] = "Не удалось прочитать: ",
-        ["dialog.reset"] = "Вернуть настройки к стандартным значениям? Устройство, раскладка и язык не изменятся.",
+        ["dialog.reset"] = "Вернуть настройки текущего протокола к стандартным значениям? Устройство, раскладка и язык не изменятся.",
         ["dialog.loaded"] = "Настройки загружены и применены.",
         ["tray.show"] = "Показать",
         ["apply"] = "Применить",
@@ -505,11 +510,16 @@ public static class Loc
         ["main.export"] = "Export…",
         ["main.import"] = "Import…",
         ["main.reset"] = "Defaults",
-        ["main.reset.note"] = "Puts the settings back to their standard values. The chosen screen and port, the strip layout, the language and the window position are left alone. Like any other edit it applies at once and reaches the disk on Apply.",
+        ["main.reset.note"] = "Puts the settings back to their standard values. The screen, the protocol and port, the strip layout, the language and the window position are left alone, and so are the other protocol's settings. Like any other edit it applies at once and reaches the disk on Apply.",
         ["main.exit"] = "Exit",
 
         ["device.monitor"] = "Monitor",
+        ["device.protocol"] = "Protocol",
+        ["device.protocol.adalight"] = "Adalight — Arduino and compatibles",
+        ["device.protocol.awa"] = "AWA — HyperSerialPico, HyperSerialESP32",
+        ["device.protocol.note"] = "Adalight is the stock protocol of the Arduino firmwares. AWA is its extension with a checksum, spoken by the HyperSerialPico and HyperSerialESP32 firmwares. Layout, brightness, colour and port are kept separately for each protocol and brought back on switching, and the strip reconnects at once. The port list only offers boards that fit the chosen protocol.",
         ["device.port"] = "COM port",
+        ["device.port.none"] = "no matching devices",
         ["device.baud"] = "Baud rate",
         ["device.baud.note"] = "The controller firmware must be configured for the same baud rate, or there will be no connection.",
         ["device.apply"] = "Apply and reconnect",
@@ -640,7 +650,7 @@ public static class Loc
         ["dialog.filter"] = "Rimlight settings (*.json)|*.json",
         ["dialog.saveFail"] = "Could not save: ",
         ["dialog.loadFail"] = "Could not read: ",
-        ["dialog.reset"] = "Put the settings back to their standard values? The device, the layout and the language are not affected.",
+        ["dialog.reset"] = "Put the current protocol's settings back to their standard values? The device, the layout and the language are not affected.",
         ["dialog.loaded"] = "Settings loaded and applied.",
         ["tray.show"] = "Show",
         ["apply"] = "Apply",

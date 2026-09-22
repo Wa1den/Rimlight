@@ -3,26 +3,38 @@ using System.Collections.Generic;
 using System.IO.Ports;
 using Microsoft.Win32;
 
-namespace AwaProbe;
+namespace Rimlight;
 
 /// <summary>
-/// Serial ports with the USB identity behind them, so the controller can be picked out of
-/// the list instead of guessed at.
+/// Serial ports with the USB identity behind them, so each protocol lists only the boards
+/// that can speak it.
+///
+/// Sorted by vendor rather than by asking the device: sending a query to every port on the
+/// machine means writing unasked-for bytes into whatever else is plugged in - a printer, a
+/// modem, the Nano itself, which a raised DTR would reboot. The vendor is enough for the
+/// split that matters here. RP2040 and ESP32-S2 carry USB on the chip and cannot be running
+/// stock Adalight; everything behind a USB-to-UART bridge is left under Adalight.
 ///
 /// Read from the registry rather than WMI: every USB serial device Windows has seen records
 /// its COM name under Enum\USB\VID_xxxx&amp;PID_xxxx\&lt;instance&gt;\Device Parameters,
 /// readable without elevation and without pulling in System.Management. Only names that
 /// SerialPort reports as present right now are kept - the registry also remembers devices
-/// that were unplugged long ago.
+/// unplugged long ago.
+///
+/// Shared with tools/AwaProbe; keep it free of anything else from the application.
 /// </summary>
-static class Ports
+public static class SerialDevices
 {
-    /// <summary>Raspberry Pi's vendor ID, which every RP2040 running the stock USB stack uses.</summary>
+    /// <summary>Raspberry Pi: RP2040 and RP2350 on the stock USB stack.</summary>
     public const string RaspberryPiVid = "2E8A";
+
+    /// <summary>Espressif: the ESP32-S2 and later with USB on the chip, no bridge.</summary>
+    public const string EspressifVid = "303A";
 
     public sealed record Port(string Name, string Vid, string Pid)
     {
-        public bool IsRp2040 => Vid == RaspberryPiVid;
+        public DeviceProtocol Protocol =>
+            Vid is RaspberryPiVid or EspressifVid ? DeviceProtocol.Awa : DeviceProtocol.Adalight;
     }
 
     public static List<Port> Present()
@@ -64,6 +76,15 @@ static class Ports
         return list;
     }
 
+    /// <summary>Names of the ports present now whose board fits the protocol.</summary>
+    public static List<string> For(DeviceProtocol protocol)
+    {
+        var names = new List<string>();
+        foreach (var p in Present())
+            if (p.Protocol == protocol) names.Add(p.Name);
+        return names;
+    }
+
     static string Field(string s, string key)
     {
         int i = s.IndexOf(key, StringComparison.OrdinalIgnoreCase);
@@ -71,5 +92,5 @@ static class Ports
     }
 
     static int Number(string name) =>
-        int.TryParse(name.AsSpan(3), out int n) ? n : int.MaxValue;
+        name.Length > 3 && int.TryParse(name.AsSpan(3), out int n) ? n : int.MaxValue;
 }

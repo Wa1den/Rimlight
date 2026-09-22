@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Rimlight;
 
 namespace AwaProbe;
 
@@ -50,7 +51,6 @@ static class Program
 
     static int Execute(string[] args)
     {
-
         string? portName = null;
         int leds = 122;
         int level = 128;
@@ -126,20 +126,24 @@ static class Program
 
     static int List()
     {
-        var ports = Ports.Present();
+        var ports = SerialDevices.Present();
         if (ports.Count == 0) { Console.WriteLine("Последовательных портов нет."); return 1; }
 
         foreach (var p in ports)
         {
             string id = p.Vid.Length > 0 ? $"VID {p.Vid}  PID {p.Pid}" : "без USB-идентификатора";
-            Line($"  {p.Name,-6} {id}{(p.IsRp2040 ? "   ← RP2040" : "")}", p.IsRp2040 ? ConsoleColor.Green : null);
+            bool awa = p.Protocol == DeviceProtocol.Awa;
+            Line($"  {p.Name,-6} {id}{(awa ? "   ← " + Board(p) : "")}", awa ? ConsoleColor.Green : null);
         }
         return 0;
     }
 
+    static string Board(SerialDevices.Port p) =>
+        p.Vid == SerialDevices.RaspberryPiVid ? "RP2040" : "ESP32-S2";
+
     static string? FindController()
     {
-        var picos = Ports.Present().Where(p => p.IsRp2040).ToList();
+        var picos = SerialDevices.Present().Where(p => p.Protocol == DeviceProtocol.Awa).ToList();
         if (picos.Count == 1) return picos[0].Name;
 
         if (picos.Count == 0)

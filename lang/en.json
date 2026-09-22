@@ -52,10 +52,15 @@
   "main.export": "Export…",
   "main.import": "Import…",
   "main.reset": "Defaults",
-  "main.reset.note": "Puts the settings back to their standard values. The chosen screen and port, the strip layout, the language and the window position are left alone. Like any other edit it applies at once and reaches the disk on Apply.",
+  "main.reset.note": "Puts the settings back to their standard values. The screen, the protocol and port, the strip layout, the language and the window position are left alone, and so are the other protocol's settings. Like any other edit it applies at once and reaches the disk on Apply.",
   "main.exit": "Exit",
   "device.monitor": "Monitor",
+  "device.protocol": "Protocol",
+  "device.protocol.adalight": "Adalight — Arduino and compatibles",
+  "device.protocol.awa": "AWA — HyperSerialPico, HyperSerialESP32",
+  "device.protocol.note": "Adalight is the stock protocol of the Arduino firmwares. AWA is its extension with a checksum, spoken by the HyperSerialPico and HyperSerialESP32 firmwares. Layout, brightness, colour and port are kept separately for each protocol and brought back on switching, and the strip reconnects at once. The port list only offers boards that fit the chosen protocol.",
   "device.port": "COM port",
+  "device.port.none": "no matching devices",
   "device.baud": "Baud rate",
   "device.baud.note": "The controller firmware must be configured for the same baud rate, or there will be no connection.",
   "device.apply": "Apply and reconnect",
@@ -178,7 +183,7 @@
   "dialog.filter": "Rimlight settings (*.json)|*.json",
   "dialog.saveFail": "Could not save: ",
   "dialog.loadFail": "Could not read: ",
-  "dialog.reset": "Put the settings back to their standard values? The device, the layout and the language are not affected.",
+  "dialog.reset": "Put the current protocol's settings back to their standard values? The device, the layout and the language are not affected.",
   "dialog.loaded": "Settings loaded and applied.",
   "tray.show": "Show",
   "apply": "Apply",
@@ -198,5 +203,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "37"
+  "_version": "38"
 }

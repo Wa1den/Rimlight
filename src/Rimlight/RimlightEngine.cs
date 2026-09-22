@@ -299,7 +299,7 @@ public sealed class RimlightEngine : IDisposable
 
             // the frame header encodes the LED count, so the device has to be reopened -
             // but without the bootloader pause, or editing the count would blank the strip
-            _device.Open(_cfg.PortName, _cfg.BaudRate, _zones.Length, waitBootloader: false);
+            _device.Open(_cfg.PortName, _cfg.BaudRate, _zones.Length, _cfg.Protocol, waitBootloader: false);
         }
 
         RemapZones();
@@ -344,7 +344,7 @@ public sealed class RimlightEngine : IDisposable
         _capture = NewCapture(cfg);
         _capture.Start(_monitor);
 
-        _device.Open(cfg.PortName, cfg.BaudRate, _zones.Length);
+        _device.Open(cfg.PortName, cfg.BaudRate, _zones.Length, cfg.Protocol);
 
         _restartCapture = false;
 
@@ -593,7 +593,7 @@ public sealed class RimlightEngine : IDisposable
                 if (now - lastReconnectAttempt > 2000)
                 {
                     lastReconnectAttempt = now;
-                    _device.TryReconnect(_cfg.PortName, _cfg.BaudRate, _zones.Length);
+                    _device.TryReconnect(_cfg.PortName, _cfg.BaudRate, _zones.Length, _cfg.Protocol);
                 }
             }
 

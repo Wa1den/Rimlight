@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Rimlight.Leds;
@@ -83,6 +84,21 @@ public sealed class RimlightConfig
     public CaptureMode CaptureMode { get; set; } = CaptureMode.Auto;
     public string PortName { get; set; } = "COM4";
     public int BaudRate { get; set; } = 1000000;
+
+    /// <summary>
+    /// What the controller speaks. Decides how frames are built, whether DTR goes up and
+    /// whether the board needs a pause for its bootloader - see <see cref="AdalightDevice"/>.
+    /// </summary>
+    public DeviceProtocol Protocol { get; set; } = DeviceProtocol.Adalight;
+
+    /// <summary>
+    /// The settings each protocol had the last time it was left - see <see cref="DeviceProfile"/>.
+    /// Null until that protocol has been used once. The slot of the protocol in use is stale
+    /// between switches: its values live in the ordinary fields, and the slot is refreshed
+    /// on the way out and when the file is written.
+    /// </summary>
+    public DeviceProfile? AdalightProfile { get; set; }
+    public DeviceProfile? AwaProfile { get; set; }
 
     // ---- strip layout -------------------------------------------------------
     public int TopCount { get; set; } = 43;
@@ -507,6 +523,7 @@ public sealed class RimlightConfig
 
     public void SaveTo(string path)
     {
+        StoreActiveProfile();
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(this, Options));
     }
@@ -555,6 +572,7 @@ public sealed class RimlightConfig
     {
         nameof(MonitorDeviceName), nameof(MonitorModel), nameof(CaptureMode),
         nameof(PortName), nameof(BaudRate),
+        nameof(Protocol), nameof(AdalightProfile), nameof(AwaProfile),
 
         nameof(TopCount), nameof(BottomCount), nameof(LeftCount), nameof(RightCount),
         nameof(StartCorner), nameof(CounterClockwise), nameof(IndexOffset),
@@ -577,12 +595,65 @@ public sealed class RimlightConfig
         {
             if (!prop.CanRead || !prop.CanWrite) continue;
             if (Array.IndexOf(Geometry, prop.Name) >= 0) continue;
+            if (prop.Name is nameof(AdalightProfile) or nameof(AwaProfile)) continue;
 
             if (!Equals(prop.GetValue(this), prop.GetValue(other))) return false;
         }
 
-        return true;
+        // The slot of the protocol in use is stale by design and its real values are the
+        // fields compared above, so only the other slot is compared as it stands. Comparing
+        // both would leave the bar up after switching away and back with nothing changed.
+        var idle = Protocol == DeviceProtocol.Awa ? DeviceProtocol.Adalight : DeviceProtocol.Awa;
+        return Equals(Profile(idle), other.Profile(idle));
     }
+
+    // ---- profiles -----------------------------------------------------------------
+
+    static readonly PropertyInfo[] ProfileFields = typeof(DeviceProfile).GetProperties();
+
+    DeviceProfile? Profile(DeviceProtocol protocol) =>
+        protocol == DeviceProtocol.Awa ? AwaProfile : AdalightProfile;
+
+    void StoreProfile(DeviceProtocol protocol, DeviceProfile profile)
+    {
+        if (protocol == DeviceProtocol.Awa) AwaProfile = profile;
+        else AdalightProfile = profile;
+    }
+
+    /// <summary>The fields of the profile as they stand now, copied by name.</summary>
+    public DeviceProfile CaptureProfile()
+    {
+        var profile = new DeviceProfile();
+        foreach (var field in ProfileFields)
+            field.SetValue(profile, typeof(RimlightConfig).GetProperty(field.Name)!.GetValue(this));
+        return profile;
+    }
+
+    void ApplyProfile(DeviceProfile profile)
+    {
+        foreach (var field in ProfileFields)
+            typeof(RimlightConfig).GetProperty(field.Name)!.SetValue(this, field.GetValue(profile));
+    }
+
+    /// <summary>
+    /// Puts away the settings of the protocol being left and brings back the ones last used
+    /// with the new one. A protocol used for the first time starts from what is on screen
+    /// now rather than from defaults: the same strip moving to a new controller is the
+    /// likeliest case, and its layout and colours are what took time to get right.
+    /// </summary>
+    public void SwitchProtocol(DeviceProtocol next)
+    {
+        if (next == Protocol) return;
+
+        StoreProfile(Protocol, CaptureProfile());
+        Protocol = next;
+
+        if (Profile(next) is { } stored) ApplyProfile(stored);
+        StoreProfile(next, CaptureProfile());
+    }
+
+    /// <summary>Brings the slot of the protocol in use up to date, so the file on disk reads true.</summary>
+    void StoreActiveProfile() => StoreProfile(Protocol, CaptureProfile());
 
     public void ResetToDefaults()
     {
@@ -595,6 +666,7 @@ public sealed class RimlightConfig
 
     public void Save()
     {
+        StoreActiveProfile();
         try
         {
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
@@ -605,4 +677,54 @@ public sealed class RimlightConfig
             Rimlight.Capture.ProbeLog.Log("config", "не удалось сохранить конфиг: " + ex.Message);
         }
     }
+}
+
+/// <summary>
+/// The part of the settings that belongs to one controller rather than to the program: the
+/// port it hangs on, the strip it drives, and how that strip is tuned - the Layout,
+/// Brightness and Colour sections plus the port. Kept per protocol, so going back to the
+/// other controller brings its own strip back with it.
+///
+/// Names match the properties of <see cref="RimlightConfig"/> one for one: the two are
+/// copied into each other by name, so a field added here needs no other change. Defaults
+/// come from a fresh config for the same reason - a profile written before a field existed
+/// reads that field as the program's default rather than as zero, which for brightness
+/// would be a dark strip.
+///
+/// Immutable. The settings object is copied by reference into the applied copy and back on
+/// Cancel, so a profile that could change in place would change in both.
+/// </summary>
+public sealed record DeviceProfile
+{
+    static readonly RimlightConfig D = new();
+
+    public string PortName { get; init; } = D.PortName;
+    public int BaudRate { get; init; } = D.BaudRate;
+
+    public int TopCount { get; init; } = D.TopCount;
+    public int BottomCount { get; init; } = D.BottomCount;
+    public int LeftCount { get; init; } = D.LeftCount;
+    public int RightCount { get; init; } = D.RightCount;
+    public Corner StartCorner { get; init; } = D.StartCorner;
+    public bool CounterClockwise { get; init; } = D.CounterClockwise;
+    public int IndexOffset { get; init; } = D.IndexOffset;
+    public double EdgeMarginPercent { get; init; } = D.EdgeMarginPercent;
+    public double EdgeMarginPercentV { get; init; } = D.EdgeMarginPercentV;
+    public double DepthPercent { get; init; } = D.DepthPercent;
+
+    public double MaxBrightness { get; init; } = D.MaxBrightness;
+    public double MinLuma { get; init; } = D.MinLuma;
+    public double ShadowNeutral { get; init; } = D.ShadowNeutral;
+    public double MinBacklight { get; init; } = D.MinBacklight;
+    public double PowerLimitAmps { get; init; } = D.PowerLimitAmps;
+
+    public double Saturation { get; init; } = D.Saturation;
+    public double Gamma { get; init; } = D.Gamma;
+    public int TemperatureK { get; init; } = D.TemperatureK;
+    public double GainR { get; init; } = D.GainR;
+    public double GainG { get; init; } = D.GainG;
+    public double GainB { get; init; } = D.GainB;
+    public bool Dithering { get; init; } = D.Dithering;
+    public double SmoothingRise { get; init; } = D.SmoothingRise;
+    public double SmoothingFall { get; init; } = D.SmoothingFall;
 }

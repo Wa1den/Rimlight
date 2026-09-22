@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>AwaProbe</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+  </ItemGroup>
+
+  <!--
+    The encoder and the port classification are the application's own, not copies: the
+    point of the self-test is that the frame it checks is the frame the program sends.
+    Both files are kept free of the rest of the application so that linking them brings
+    nothing else along.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Rimlight\AwaFrame.cs" Link="Shared\AwaFrame.cs" />
+    <Compile Include="..\..\src\Rimlight\DeviceProtocol.cs" Link="Shared\DeviceProtocol.cs" />
+    <Compile Include="..\..\src\Rimlight\SerialDevices.cs" Link="Shared\SerialDevices.cs" />
+  </ItemGroup>
+
+</Project>

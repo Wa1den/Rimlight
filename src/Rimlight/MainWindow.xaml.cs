@@ -930,46 +930,64 @@ public partial class MainWindow : Window
             };
             panel.Children.Add(Labeled(Loc.T("device.monitor"), _monitorBox));
 
-            _portBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8), IsEditable = true, Text = _cfg.PortName };
-            foreach (var p in SerialPort.GetPortNames()) _portBox.Items.Add(p);
-
-            // The box is editable, so the port can be typed as well as picked; the text
-            // event covers both, where SelectionChanged would miss anything typed.
-            _portBox.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent,
-                new TextChangedEventHandler((_, _) =>
-                {
-                    if (_rebuildingUi) return;
-                    _cfg.PortName = string.IsNullOrWhiteSpace(_portBox.Text) ? "COM4" : _portBox.Text.Trim();
-                    MarkDirty();
-                }));
-
-            panel.Children.Add(Labeled(Loc.T("device.port"), _portBox));
-
-            // A value from an older settings file or a hand-edited one is kept in the list
-            // rather than replaced: the firmware it matches is already flashed.
-            var rates = new List<int>(BaudRates);
-            if (_cfg.BaudRate > 0 && !rates.Contains(_cfg.BaudRate))
+            // Before the port: which ports can be offered at all depends on it.
+            var protocolBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
+            protocolBox.Items.Add(Loc.T("device.protocol.adalight"));
+            protocolBox.Items.Add(Loc.T("device.protocol.awa"));
+            protocolBox.SelectedIndex = _cfg.Protocol == DeviceProtocol.Awa ? 1 : 0;
+            protocolBox.SelectionChanged += (_, _) =>
             {
-                rates.Add(_cfg.BaudRate);
-                rates.Sort();
-            }
+                if (_rebuildingUi) return;
+                SwitchProtocol(protocolBox.SelectedIndex == 1 ? DeviceProtocol.Awa : DeviceProtocol.Adalight);
+            };
+            panel.Children.Add(Labeled(Loc.T("device.protocol"), protocolBox, Loc.T("device.protocol.note")));
 
-            var baudBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
-            foreach (int rate in rates)
-                baudBox.Items.Add(rate.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture).Replace(',', ' '));
-            baudBox.SelectedIndex = rates.IndexOf(_cfg.BaudRate);
-            baudBox.SelectionChanged += (_, _) =>
+            // Only boards that can speak the chosen protocol are offered, and the list is
+            // read again each time it opens: a board plugged in after start-up has to appear
+            // without a restart of the program.
+            _portBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
+            FillPorts();
+            _portBox.DropDownOpened += (_, _) => FillPorts();
+            _portBox.SelectionChanged += (_, _) =>
             {
-                if (_rebuildingUi || baudBox.SelectedIndex < 0) return;
+                if (_rebuildingUi || _fillingPorts || _portBox.SelectedItem is not string name) return;
+                if (string.Equals(name, _cfg.PortName, StringComparison.OrdinalIgnoreCase)) return;
 
-                // список поднимает событие и при входе в дерево, с тем же значением
-                int chosen = rates[baudBox.SelectedIndex];
-                if (chosen == _cfg.BaudRate) return;
-
-                _cfg.BaudRate = chosen;
+                _cfg.PortName = name;
                 MarkDirty();
             };
-            panel.Children.Add(Labeled(Loc.T("device.baud"), baudBox, Loc.T("device.baud.note")));
+            panel.Children.Add(Labeled(Loc.T("device.port"), _portBox));
+
+            // A board with USB on the chip ignores the baud rate, so there is nothing to set.
+            if (_cfg.Protocol == DeviceProtocol.Adalight)
+            {
+
+                // A value from an older settings file or a hand-edited one is kept in the list
+                // rather than replaced: the firmware it matches is already flashed.
+                var rates = new List<int>(BaudRates);
+                if (_cfg.BaudRate > 0 && !rates.Contains(_cfg.BaudRate))
+                {
+                    rates.Add(_cfg.BaudRate);
+                    rates.Sort();
+                }
+
+                var baudBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
+                foreach (int rate in rates)
+                    baudBox.Items.Add(rate.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture).Replace(',', ' '));
+                baudBox.SelectedIndex = rates.IndexOf(_cfg.BaudRate);
+                baudBox.SelectionChanged += (_, _) =>
+                {
+                    if (_rebuildingUi || baudBox.SelectedIndex < 0) return;
+
+                    // список поднимает событие и при входе в дерево, с тем же значением
+                    int chosen = rates[baudBox.SelectedIndex];
+                    if (chosen == _cfg.BaudRate) return;
+
+                    _cfg.BaudRate = chosen;
+                    MarkDirty();
+                };
+                panel.Children.Add(Labeled(Loc.T("device.baud"), baudBox, Loc.T("device.baud.note")));
+            }
 
             var apply = new Button { Content = Loc.T("device.apply"), Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(8, 5, 8, 5) };
             apply.Click += (_, _) => Restart();
@@ -1250,6 +1268,8 @@ public partial class MainWindow : Window
                 "https://github.com/Wa1den/Rimlight"));
             panel.Children.Add(LinkLine(Loc.T("about.firmware"),
                 "https://github.com/AlexGyver/Arduino_Ambilight"));
+            panel.Children.Add(LinkLine(Loc.T("about.firmware.awa"),
+                "https://github.com/awawa-dev/HyperSerialPico"));
         });
 
         _rebuildingUi = false;
@@ -1348,6 +1368,66 @@ public partial class MainWindow : Window
             v => { _cfg.IndexOffset = (int)v; _engine.RequestRelayout(); }));
     }
 
+    bool _fillingPorts;
+
+    /// <summary>
+    /// Refills the port list with the ports whose board fits the protocol in use. The one in
+    /// the settings stays selected if it is among them; a port that is not is left alone
+    /// rather than swapped for another - quietly moving to a different port is how frames end
+    /// up in a device that has nothing to do with the strip.
+    /// </summary>
+    void FillPorts()
+    {
+        if (_portBox == null) return;
+
+        _fillingPorts = true;
+        try
+        {
+            var ports = SerialDevices.For(_cfg.Protocol);
+            _portBox.Items.Clear();
+
+            if (ports.Count == 0)
+            {
+                _portBox.Items.Add(new ComboBoxItem { Content = Loc.T("device.port.none"), IsEnabled = false });
+                _portBox.SelectedIndex = 0;
+                return;
+            }
+
+            foreach (var p in ports) _portBox.Items.Add(p);
+            _portBox.SelectedIndex = ports.FindIndex(p => string.Equals(p, _cfg.PortName, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _fillingPorts = false;
+        }
+    }
+
+    /// <summary>
+    /// Changes the controller: puts away the layout, brightness, colour and port of the
+    /// protocol being left, brings back those of the new one, and reconnects at once. Waiting
+    /// for the reconnect button would leave the old board lit with the new board's settings
+    /// until it was pressed.
+    ///
+    /// The port of a profile can belong to a board that is no longer there, or - the first
+    /// time a protocol is used - to the other protocol's board. Here, and only here, it is
+    /// moved to the first fitting board present: the user has just asked for a change of
+    /// controller, which is what makes the move safe.
+    /// </summary>
+    void SwitchProtocol(DeviceProtocol next)
+    {
+        if (next == _cfg.Protocol) return;
+
+        _cfg.SwitchProtocol(next);
+
+        var ports = SerialDevices.For(next);
+        if (ports.Count > 0 && !ports.Exists(p => string.Equals(p, _cfg.PortName, StringComparison.OrdinalIgnoreCase)))
+            _cfg.PortName = ports[0];
+
+        BuildSettings();
+        MarkDirty();
+        Restart();
+    }
+
     void Restart()
     {
         if (_monitorBox.SelectedIndex >= 0 && _monitorBox.SelectedIndex < _monitors.Count)
@@ -1359,7 +1439,8 @@ public partial class MainWindow : Window
             _cfg.MonitorModel = chosen.Model;
         }
 
-        _cfg.PortName = string.IsNullOrWhiteSpace(_portBox.Text) ? "COM4" : _portBox.Text.Trim();
+        // Порт не читается из списка: там может стоять «нет подходящих устройств», и эта
+        // строка ушла бы в настройки именем порта. Список сам пишет выбор в _cfg.
 
         // Ручной стоп переживает смену порта и экрана: выбор запоминается, а движок ждёт
         // нажатия «Старт».
@@ -1415,6 +1496,10 @@ public partial class MainWindow : Window
 
     void CancelChanges()
     {
+        // Смена протокола переподключает сразу, поэтому и её отмена должна переподключить
+        // обратно - иначе лента осталась бы на плате, которую только что отменили.
+        bool protocolBack = _cfg.Protocol != _saved.Protocol;
+
         _cfg.CopyFrom(_saved);
         _dirty = false;
 
@@ -1425,8 +1510,15 @@ public partial class MainWindow : Window
 
         BuildSettings();      // restores the open section itself
 
-        _engine.RequestRelayout();
-        _engine.RestartCapture();
+        if (protocolBack)
+        {
+            Restart();
+        }
+        else
+        {
+            _engine.RequestRelayout();
+            _engine.RestartCapture();
+        }
 
         // после BuildSettings: перестроение страницы заново назначает подписи, но не
         // трогает полосу внизу

@@ -23,12 +23,14 @@
     settings file live in the application project, so the sources are linked in rather
     than duplicated - a change to either reaches this tool with the next build.
 
-    CropDetector only comes along because RimlightConfig.ToCropSettings names the type;
-    nothing here runs the detector.
+    CropDetector only comes along because RimlightConfig.ToCropSettings names the type, and
+    DeviceProtocol because the settings record which protocol each controller speaks;
+    nothing here runs the detector or talks to a controller.
   -->
   <ItemGroup>
     <Compile Include="..\..\src\Rimlight\Config.cs" Link="Shared\Config.cs" />
     <Compile Include="..\..\src\Rimlight\CropDetector.cs" Link="Shared\CropDetector.cs" />
+    <Compile Include="..\..\src\Rimlight\DeviceProtocol.cs" Link="Shared\DeviceProtocol.cs" />
     <Compile Include="..\..\src\Rimlight\LedLayout.cs" Link="Shared\LedLayout.cs" />
     <Compile Include="..\..\src\Rimlight\ScreenChoice.cs" Link="Shared\ScreenChoice.cs" />
   </ItemGroup>

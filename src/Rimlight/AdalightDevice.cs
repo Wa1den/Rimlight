@@ -173,7 +173,43 @@ public sealed class AdalightDevice : IDisposable
     /// </param>
     public bool Open(string portName, int baud, int ledCount, DeviceProtocol protocol, bool waitBootloader = true)
     {
-        lock (_io) return OpenCore(portName, baud, ledCount, protocol, waitBootloader);
+        lock (_io)
+        {
+            _silentGreets = 0;
+            return OpenCore(portName, baud, ledCount, protocol, waitBootloader);
+        }
+    }
+
+    /// <summary>
+    /// Сколько раз подряд плата AWA промолчала на приветствие. Сбрасывается ответом и
+    /// открытием порта извне, но не повторами из <see cref="RetryGreeting"/>.
+    /// </summary>
+    int _silentGreets;
+
+    /// <summary>
+    /// Сколько повторов даётся молчащей плате. С паузой в <see cref="GreetRetryMs"/> это
+    /// полминуты: после перезагрузки компьютера первое приветствие иногда остаётся без
+    /// ответа, а переоткрытие порта вручную его получает. Бесконечно повторять нельзя:
+    /// плата, которая принимает кадры, но не отвечает, мигала бы на каждом переоткрытии.
+    /// </summary>
+    const int GreetRetries = 10;
+
+    public const int GreetRetryMs = 3000;
+
+    /// <summary>Плата AWA не ответила, и повторы ещё не исчерпаны.</summary>
+    public bool WantsGreetRetry => _link.State == Link.Silent && _silentGreets <= GreetRetries;
+
+    /// <summary>
+    /// Переоткрывает порт и приветствует плату заново: то же, что делает кнопка
+    /// «Применить и переподключиться», после которой плата отвечает.
+    /// </summary>
+    public void RetryGreeting(string portName, int baud, int ledCount, DeviceProtocol protocol)
+    {
+        lock (_io)
+        {
+            if (_link.State != Link.Silent) return;
+            OpenCore(portName, baud, ledCount, protocol, waitBootloader: false);
+        }
     }
 
     /// <summary>
@@ -310,12 +346,20 @@ public sealed class AdalightDevice : IDisposable
         {
             _link = new(Link.Silent, portName);
             HasError = true;
-            ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P("открыт, но прошивка не ответила по протоколу AWA", "open, but the firmware did not answer over AWA"));
+            _silentGreets++;
+
+            // повторы пишутся в журнал только первым и последним, иначе он забит одной строкой
+            if (_silentGreets == 1)
+                ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P("открыт, но прошивка не ответила по протоколу AWA", "open, but the firmware did not answer over AWA"));
+            else if (_silentGreets > GreetRetries)
+                ProbeLog.Log(Loc.P("порт", "port"), $"{portName}: " + Loc.P($"прошивка не ответила и после {GreetRetries} повторов", $"the firmware did not answer after {GreetRetries} retries either"));
             return true;
         }
 
         _link = new(Link.Ready, portName, firmware);
-        ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P("открыт, ", "open, ") + firmware);
+        ProbeLog.Log(Loc.P("порт", "port"), $"{portName} " + Loc.P("открыт, ", "open, ") + firmware +
+                     (_silentGreets > 0 ? Loc.P($" (ответ на {_silentGreets + 1}-е приветствие)", $" (answered greeting #{_silentGreets + 1})") : ""));
+        _silentGreets = 0;
         return true;
     }
 

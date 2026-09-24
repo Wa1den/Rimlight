@@ -409,6 +409,7 @@ public sealed class RimlightEngine : IDisposable
         double lastMs = 0;
         double lastCropMs = 0;
         long lastReconnectAttempt = 0;
+        long lastGreetRetry = 0;
         bool everSampled = false;
 
         while (_running)
@@ -596,6 +597,19 @@ public sealed class RimlightEngine : IDisposable
                     _device.TryReconnect(_cfg.PortName, _cfg.BaudRate, _zones.Length, _cfg.Protocol);
                 }
             }
+            else if (_device.WantsGreetRetry)
+            {
+                // Плата AWA открылась, но не ответила; после перезагрузки компьютера так
+                // бывает, и переоткрытие порта это исправляет.
+                long now = Environment.TickCount64;
+                if (lastGreetRetry == 0) lastGreetRetry = now;
+                else if (now - lastGreetRetry > AdalightDevice.GreetRetryMs)
+                {
+                    lastGreetRetry = now;
+                    _device.RetryGreeting(_cfg.PortName, _cfg.BaudRate, _zones.Length, _cfg.Protocol);
+                }
+            }
+            else lastGreetRetry = 0;
 
             if (haveNewFrame && !stamps.IsEmpty) pendingStamps = stamps;
 

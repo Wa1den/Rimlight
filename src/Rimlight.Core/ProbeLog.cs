@@ -22,7 +22,7 @@ public static class ProbeLog
     static string Path;
     static bool _enabled = true;
     static bool _headerWritten;
-    static long _size = -1;   // unknown until the first write looks at the file
+    static long _size = -1;   // неизвестен, пока первая запись не посмотрит на файл
     // per-source, otherwise three backends would flip a single shared key back and forth
     static readonly System.Collections.Generic.Dictionary<string, string> LastStatus = new();
 
@@ -82,7 +82,7 @@ public static class ProbeLog
             }
             catch
             {
-                _size = -1;   // re-read the real size next time instead of trusting a guess
+                _size = -1;   // после сбоя размер перечитывается с диска
                 /* logging must never kill the app */
             }
         }

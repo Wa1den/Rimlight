@@ -170,7 +170,9 @@ dotnet publish src/Rimlight -c Release -r win-x64 --self-contained false -p:Publ
 скетчи читают фиксированное число байт независимо от заголовка, поэтому при расхождении
 изображение смещается вдоль ленты. Прошивки AWA берут число диодов из заголовка кадра.
 
-Настройки, лог и файлы переводов хранятся в `%APPDATA%\Rimlight\`.
+Настройки, лог и файлы переводов хранятся в `%APPDATA%\Rimlight\`. Когда лог дорастает
+до 5 МБ, он переименовывается в `rimlight.old.log` и начинается заново, поэтому больше
+10 МБ он не занимает.
 
 ## Локализация
 
@@ -451,7 +453,9 @@ With Adalight the LED total must match `NUM_LEDS` in the firmware: stock sketche
 fixed number of bytes regardless of the header, so a mismatch shifts the picture along the
 strip. AWA firmwares take the LED count from the frame header.
 
-Settings, the log and translation files are stored in `%APPDATA%\Rimlight\`.
+Settings, the log and translation files are stored in `%APPDATA%\Rimlight\`. Once the log
+reaches 5 MB it is renamed to `rimlight.old.log` and a new one is started, so it never takes
+more than 10 MB.
 
 ## Localisation
 

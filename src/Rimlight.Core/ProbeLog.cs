@@ -11,10 +11,18 @@ namespace Rimlight.Capture;
 /// </summary>
 public static class ProbeLog
 {
+    /// <summary>
+    /// Past this size the file is renamed to *.old.log and a fresh one is started, so the
+    /// log never takes more than twice this on disk. The per-second telemetry alone would
+    /// otherwise grow it by tens of megabytes a day on a machine that is never switched off.
+    /// </summary>
+    public const long MaxBytes = 5 * 1024 * 1024;
+
     static readonly object Lock = new();
     static string Path;
     static bool _enabled = true;
     static bool _headerWritten;
+    static long _size = -1;   // неизвестен, пока первая запись не посмотрит на файл
     // per-source, otherwise three backends would flip a single shared key back and forth
     static readonly System.Collections.Generic.Dictionary<string, string> LastStatus = new();
 
@@ -25,6 +33,9 @@ public static class ProbeLog
 
     public static string FilePath => Path;
 
+    /// <summary>Where the previous file goes when the current one outgrows <see cref="MaxBytes"/>.</summary>
+    public static string OldFilePath => System.IO.Path.ChangeExtension(Path, ".old.log");
+
     /// <summary>Points the log somewhere else, or turns it off entirely.</summary>
     public static void Configure(string path, bool enabled)
     {
@@ -33,6 +44,7 @@ public static class ProbeLog
             Path = path;
             _enabled = enabled;
             _headerWritten = false;
+            _size = -1;
         }
         if (enabled) Log("log", "лог включён: " + path);
     }
@@ -41,27 +53,38 @@ public static class ProbeLog
     {
         if (!_enabled) return;
 
-        // header written on first use, so merely referencing the logger never creates a file
-        lock (Lock)
-        {
-            if (!_headerWritten)
-            {
-                _headerWritten = true;
-                try
-                {
-                    File.AppendAllText(Path,
-                        $"{Environment.NewLine}===== сессия {DateTime.Now:yyyy-MM-dd HH:mm:ss} ====={Environment.NewLine}",
-                        Encoding.UTF8);
-                }
-                catch { /* logging must never kill the app */ }
-            }
-        }
-
         var line = string.Format(CultureInfo.InvariantCulture, "{0:HH:mm:ss:fff} [{1}] {2}{3}",
             DateTime.Now, source, message, Environment.NewLine);
         lock (Lock)
         {
-            try { File.AppendAllText(Path, line, Encoding.UTF8); } catch { /* logging must never kill the probe */ }
+            try
+            {
+                if (_size < 0) _size = File.Exists(Path) ? new FileInfo(Path).Length : 0;
+
+                string? header = null;
+                if (_size >= MaxBytes)
+                {
+                    File.Move(Path, OldFilePath, overwrite: true);
+                    _size = 0;
+                    if (_headerWritten)
+                        header = $"===== продолжение сессии, начало в {System.IO.Path.GetFileName(OldFilePath)} ====={Environment.NewLine}";
+                }
+                // header written on first use, so merely referencing the logger never creates a file
+                if (!_headerWritten)
+                {
+                    _headerWritten = true;
+                    header = $"{Environment.NewLine}===== сессия {DateTime.Now:yyyy-MM-dd HH:mm:ss} ====={Environment.NewLine}";
+                }
+
+                var text = header + line;
+                File.AppendAllText(Path, text, Encoding.UTF8);
+                _size += Encoding.UTF8.GetByteCount(text);
+            }
+            catch
+            {
+                _size = -1;   // после сбоя размер перечитывается с диска
+                /* logging must never kill the app */
+            }
         }
     }
 

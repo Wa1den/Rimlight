@@ -36,28 +36,28 @@ public enum WindowBackdrop
 }
 
 /// <summary>
-/// Reads the backdrop by name, falling back to the default on a name it does not know.
+/// Reads an enum by name, falling back to a default on a name it does not know.
 ///
 /// The stock enum converter throws on an unknown name, and <see cref="RimlightConfig.Load"/>
 /// answers any exception with default settings - a file from a later version with one more
-/// material in the list would cost every hand-tuned value in it.
+/// material or colour order in the list would cost every hand-tuned value in it.
 /// </summary>
-sealed class WindowBackdropConverter : JsonConverter<WindowBackdrop>
+sealed class LenientEnumConverter<T>(T fallback) : JsonConverter<T> where T : struct, Enum
 {
-    public override WindowBackdrop Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+    public override T Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
             int n = reader.GetInt32();
-            return Enum.IsDefined(typeof(WindowBackdrop), n) ? (WindowBackdrop)n : WindowBackdrop.MicaAlt;
+            return Enum.IsDefined(typeof(T), n) ? (T)Enum.ToObject(typeof(T), n) : fallback;
         }
 
-        return Enum.TryParse(reader.GetString(), ignoreCase: true, out WindowBackdrop value)
+        return Enum.TryParse(reader.GetString(), ignoreCase: true, out T value) && Enum.IsDefined(value)
             ? value
-            : WindowBackdrop.MicaAlt;
+            : fallback;
     }
 
-    public override void Write(Utf8JsonWriter writer, WindowBackdrop value, JsonSerializerOptions options) =>
+    public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
         writer.WriteStringValue(value.ToString());
 }
 
@@ -90,6 +90,9 @@ public sealed class RimlightConfig
     /// whether the board needs a pause for its bootloader - see <see cref="AdalightDevice"/>.
     /// </summary>
     public DeviceProtocol Protocol { get; set; } = DeviceProtocol.Adalight;
+
+    /// <summary>Channel order the pixels go out in - see <see cref="Rimlight.ColorOrder"/>.</summary>
+    public ColorOrder ColorOrder { get; set; } = ColorOrder.Rgb;
 
     /// <summary>
     /// The settings each protocol had the last time it was left - see <see cref="DeviceProfile"/>.
@@ -448,8 +451,13 @@ public sealed class RimlightConfig
         WriteIndented = true,
 
         // The list is walked front to back and the first converter that accepts the type
-        // wins. JsonStringEnumConverter claims every enum, so the lenient one stands ahead.
-        Converters = { new WindowBackdropConverter(), new JsonStringEnumConverter() }
+        // wins. JsonStringEnumConverter claims every enum, so the lenient ones stand ahead.
+        Converters =
+        {
+            new LenientEnumConverter<WindowBackdrop>(WindowBackdrop.MicaAlt),
+            new LenientEnumConverter<ColorOrder>(ColorOrder.Rgb),
+            new JsonStringEnumConverter()
+        }
     };
 
     /// <summary>
@@ -571,7 +579,7 @@ public sealed class RimlightConfig
     static readonly string[] Preserved = new[]
     {
         nameof(MonitorDeviceName), nameof(MonitorModel), nameof(CaptureMode),
-        nameof(PortName), nameof(BaudRate),
+        nameof(PortName), nameof(BaudRate), nameof(ColorOrder),
         nameof(Protocol), nameof(AdalightProfile), nameof(AwaProfile),
 
         nameof(TopCount), nameof(BottomCount), nameof(LeftCount), nameof(RightCount),
@@ -700,6 +708,7 @@ public sealed record DeviceProfile
 
     public string PortName { get; init; } = D.PortName;
     public int BaudRate { get; init; } = D.BaudRate;
+    public ColorOrder ColorOrder { get; init; } = D.ColorOrder;
 
     public int TopCount { get; init; } = D.TopCount;
     public int BottomCount { get; init; } = D.BottomCount;

@@ -989,6 +989,21 @@ public partial class MainWindow : Window
                 panel.Children.Add(Labeled(Loc.T("device.baud"), baudBox, Loc.T("device.baud.note")));
             }
 
+            var orderBox = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
+            foreach (var order in ColorOrders.All) orderBox.Items.Add(order.ToString().ToUpperInvariant());
+            orderBox.SelectedIndex = Array.IndexOf(ColorOrders.All, _cfg.ColorOrder);
+            orderBox.SelectionChanged += (_, _) =>
+            {
+                if (_rebuildingUi || orderBox.SelectedIndex < 0) return;
+
+                var chosen = ColorOrders.All[orderBox.SelectedIndex];
+                if (chosen == _cfg.ColorOrder) return;
+
+                _cfg.ColorOrder = chosen;
+                MarkDirty();
+            };
+            panel.Children.Add(Labeled(Loc.T("device.order"), orderBox, Loc.T("device.order.note")));
+
             var apply = new Button { Content = Loc.T("device.apply"), Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(8, 5, 8, 5) };
             apply.Click += (_, _) => Restart();
             panel.Children.Add(apply);

@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "39";
+    const string Version = "40";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -304,6 +304,8 @@ public static class Loc
         ["device.port.none"] = "нет подходящих устройств",
         ["device.baud"] = "Скорость, бод",
         ["device.baud.note"] = "Та же скорость должна быть выставлена в параметрах прошивки контроллера, иначе связи не будет.",
+        ["device.order"] = "Порядок цветов",
+        ["device.order.note"] = "В каком порядке каналы каждого диода уходят на контроллер. Если на ленте вместо красного светится зелёный или синий, прошивка собрана под другой порядок, и его можно поправить здесь без перепрошивки. Прошивкам Adalight и HyperSerial, собранным под свой тип ленты, нужен RGB. Меняется сразу, без переподключения.",
         ["device.apply"] = "Применить и переподключиться",
 
         ["layout.top"] = "Сверху",
@@ -524,6 +526,8 @@ public static class Loc
         ["device.port.none"] = "no matching devices",
         ["device.baud"] = "Baud rate",
         ["device.baud.note"] = "The controller firmware must be configured for the same baud rate, or there will be no connection.",
+        ["device.order"] = "Colour order",
+        ["device.order.note"] = "The order in which the channels of each LED are sent to the controller. If the strip shows green or blue where red should be, the firmware was built for a different order, and it can be corrected here without reflashing. Adalight and HyperSerial firmwares built for their strip type need RGB. Takes effect at once, without reconnecting.",
         ["device.apply"] = "Apply and reconnect",
 
         ["layout.top"] = "Top",

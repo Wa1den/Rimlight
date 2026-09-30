@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "39";
+    const string Version = "41";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -304,6 +304,8 @@ public static class Loc
         ["device.port.none"] = "нет подходящих устройств",
         ["device.baud"] = "Скорость, бод",
         ["device.baud.note"] = "Та же скорость должна быть выставлена в параметрах прошивки контроллера, иначе связи не будет.",
+        ["device.order"] = "Порядок цветов",
+        ["device.order.note"] = "В каком порядке каналы каждого диода уходят на контроллер. Если на ленте вместо красного светится зелёный или синий, прошивка собрана под другой порядок, и его можно поправить здесь без перепрошивки. Прошивкам Adalight и HyperSerial, собранным под свой тип ленты, нужен RGB. Меняется сразу, без переподключения.",
         ["device.apply"] = "Применить и переподключиться",
 
         ["layout.top"] = "Сверху",
@@ -354,6 +356,8 @@ public static class Loc
         ["color.brightness.note"] = "Верхний предел яркости, одинаковый для всех кадров. Уменьшают, когда подсветка слепит в тёмной комнате: тусклые кадры теряют яркость наравне с яркими.",
         ["color.minluma"] = "Порог темноты",
         ["color.minluma.note"] = "Ниже этого уровня зона гаснет полностью. Убирает свечение от почти чёрных участков кадра — тёмной сцены, чёрной полосы плеера. Слишком высокий порог гасит и слабые, но настоящие цвета. При включённой минимальной подсветке погашенные зоны светятся ею.",
+        ["color.boost"] = "Сверхъяркость",
+        ["color.boost.note"] = "Поднимает каждый диод к полной яркости без смены оттенка: цвет умножается на это число, пока самый яркий канал не дойдёт до максимума. Тёмные сцены становятся светлее, почти яркие цвета уходят в полную яркость, и разница между ними на ленте уменьшается. Шум тёмных кадров усиливается вместе с ними. Множитель считается в линейном свете: сверхподсветке 10 в Prismatik соответствует примерно ×2,4.",
         ["color.backlight"] = "Минимальная подсветка",
         ["color.backlight.note"] = "Уровень, ниже которого лента не гаснет: на чёрном кадре она светит ровно и тускло вместо темноты. Диод, у которого хоть один канал ярче этого уровня, остаётся как есть, поэтому тёмные цветные сцены не выцветают. Разница между чёрным и почти чёрным пропадает.",
         ["color.shadow"] = "Обесцвечивание тёмного",
@@ -524,6 +528,8 @@ public static class Loc
         ["device.port.none"] = "no matching devices",
         ["device.baud"] = "Baud rate",
         ["device.baud.note"] = "The controller firmware must be configured for the same baud rate, or there will be no connection.",
+        ["device.order"] = "Colour order",
+        ["device.order.note"] = "The order in which the channels of each LED are sent to the controller. If the strip shows green or blue where red should be, the firmware was built for a different order, and it can be corrected here without reflashing. Adalight and HyperSerial firmwares built for their strip type need RGB. Takes effect at once, without reconnecting.",
         ["device.apply"] = "Apply and reconnect",
 
         ["layout.top"] = "Top",
@@ -574,6 +580,8 @@ public static class Loc
         ["color.brightness.note"] = "Upper limit on brightness, the same for every frame. Lowered when the light is too much for a dark room: dim frames lose as much as bright ones.",
         ["color.minluma"] = "Darkness threshold",
         ["color.minluma.note"] = "Below this level a zone goes out completely. Removes the glow from nearly black parts of the picture - a dark scene, the black bar of a player. Set too high it also puts out faint but genuine colours. With a minimum backlight set, the zones it puts out glow at that level.",
+        ["color.boost"] = "Over-brightening",
+        ["color.boost.note"] = "Raises each LED towards full brightness without changing its hue: the colour is multiplied by this number until its brightest channel reaches the top. Dark scenes get lighter, nearly bright colours go to full brightness, and the strip shows less difference between them. Noise in dark frames is amplified along with them. The factor applies in linear light: Prismatik's over-brightening of 10 corresponds to about ×2.4.",
         ["color.backlight"] = "Minimum backlight",
         ["color.backlight.note"] = "The level the strip never drops below: on a black frame it glows evenly and dimly instead of going dark. An LED with any channel brighter than this level is left alone, so dark coloured scenes do not wash out. The difference between black and nearly black is lost.",
         ["color.shadow"] = "Shadow desaturation",

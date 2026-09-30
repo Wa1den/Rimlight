@@ -583,6 +583,7 @@ public sealed class RimlightEngine : IDisposable
             bool linkLost = false;
             lock (_sendGate)
             {
+                _device.Order = _cfg.ColorOrder;
                 if (!_paused && !Holding() && _output.Length > 0 && (haveNewFrame || !flowing))
                     linkLost = !_device.Send(_output, _frozen || _cfg.SendOnlyOnChange, _cfg.KeepAliveMs);
             }

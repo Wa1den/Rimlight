@@ -64,6 +64,8 @@
   "device.port.none": "no matching devices",
   "device.baud": "Baud rate",
   "device.baud.note": "The controller firmware must be configured for the same baud rate, or there will be no connection.",
+  "device.order": "Colour order",
+  "device.order.note": "The order in which the channels of each LED are sent to the controller. If the strip shows green or blue where red should be, the firmware was built for a different order, and it can be corrected here without reflashing. Adalight and HyperSerial firmwares built for their strip type need RGB. Takes effect at once, without reconnecting.",
   "device.apply": "Apply and reconnect",
   "layout.top": "Top",
   "layout.bottom": "Bottom",
@@ -111,6 +113,8 @@
   "color.brightness.note": "Upper limit on brightness, the same for every frame. Lowered when the light is too much for a dark room: dim frames lose as much as bright ones.",
   "color.minluma": "Darkness threshold",
   "color.minluma.note": "Below this level a zone goes out completely. Removes the glow from nearly black parts of the picture - a dark scene, the black bar of a player. Set too high it also puts out faint but genuine colours. With a minimum backlight set, the zones it puts out glow at that level.",
+  "color.boost": "Over-brightening",
+  "color.boost.note": "Raises each LED towards full brightness without changing its hue: the colour is multiplied by this number until its brightest channel reaches the top. Dark scenes get lighter, nearly bright colours go to full brightness, and the strip shows less difference between them. Noise in dark frames is amplified along with them. The factor applies in linear light: Prismatik's over-brightening of 10 corresponds to about ×2.4.",
   "color.backlight": "Minimum backlight",
   "color.backlight.note": "The level the strip never drops below: on a black frame it glows evenly and dimly instead of going dark. An LED with any channel brighter than this level is left alone, so dark coloured scenes do not wash out. The difference between black and nearly black is lost.",
   "color.shadow": "Shadow desaturation",
@@ -204,5 +208,5 @@
   "layout.overlay.hide": "Hide map",
   "layout.overlay.note": "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
   "_name": "English",
-  "_version": "39"
+  "_version": "41"
 }

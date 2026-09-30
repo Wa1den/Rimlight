@@ -50,6 +50,15 @@ public sealed class AdalightDevice : IDisposable
     public bool IsOpen => _port?.IsOpen == true;
 
     /// <summary>
+    /// Channel order on the wire. Read on every frame, so a change takes effect without
+    /// reopening the port.
+    /// </summary>
+    public ColorOrder Order { get; set; } = ColorOrder.Rgb;
+
+    /// <summary>Order the last frame went out in; a frame repeated in a new order is not a repeat.</summary>
+    ColorOrder _lastOrder;
+
+    /// <summary>
     /// Set when the port could not be opened or dropped mid-stream.
     ///
     /// A flag rather than a substring check on the status: the warning used to look for the
@@ -392,7 +401,7 @@ public sealed class AdalightDevice : IDisposable
             for (int i = 0; i < check; i++)
                 if (_lastSent[i] != rgb[i]) { same = false; break; }
 
-            if (same && now - _lastSendTicks < keepAliveMs)
+            if (same && Order == _lastOrder && now - _lastSendTicks < keepAliveMs)
             {
                 FramesSkipped++;
                 return true;
@@ -427,7 +436,22 @@ public sealed class AdalightDevice : IDisposable
         // the caller's buffer can briefly disagree with ours while the layout is being
         // edited; send what fits rather than throwing
         int copy = Math.Min(rgb.Length, payload);
-        Buffer.BlockCopy(rgb, 0, _frame, 6, copy);
+        var order = Order;
+        if (order == ColorOrder.Rgb)
+        {
+            Buffer.BlockCopy(rgb, 0, _frame, 6, copy);
+        }
+        else
+        {
+            copy -= copy % 3;
+            var (first, second, third) = ColorOrders.Sources(order);
+            for (int i = 0; i < copy; i += 3)
+            {
+                _frame[6 + i] = rgb[i + first];
+                _frame[6 + i + 1] = rgb[i + second];
+                _frame[6 + i + 2] = rgb[i + third];
+            }
+        }
         if (copy < payload) Array.Clear(_frame, 6 + copy, payload - copy);
         if (_protocol == DeviceProtocol.Awa) AwaFrame.WriteTrailer(_frame, _ledCount);
 
@@ -447,6 +471,7 @@ public sealed class AdalightDevice : IDisposable
         }
 
         Buffer.BlockCopy(rgb, 0, _lastSent, 0, copy);
+        _lastOrder = order;
         _lastSendTicks = now;
         _lastSendStamp = nowStamp;
         _everSent = true;

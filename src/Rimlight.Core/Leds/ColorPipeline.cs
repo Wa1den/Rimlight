@@ -108,13 +108,23 @@ public sealed class ColorPipeline
                 b = y + (b - y) * cfg.Saturation;
             }
 
-            r *= cfg.MaxBrightness; g *= cfg.MaxBrightness; b *= cfg.MaxBrightness;
+            // stretch towards full, capped by the brightest channel so the hue stays
+            double boost = 1.0;
+            if (cfg.Boost > 1.0)
+            {
+                double top = Math.Max(r, Math.Max(g, b));
+                if (top > 0 && top < 1) boost = Math.Min(cfg.Boost, 1.0 / top);
+            }
+
+            double scale = boost * cfg.MaxBrightness;
+            r *= scale; g *= scale; b *= scale;
 
             r = Math.Clamp(r, 0, 1); g = Math.Clamp(g, 0, 1); b = Math.Clamp(b, 0, 1);
 
-            // dark cutoff, so a nearly black screen does not leave the strip faintly lit
+            // dark cutoff, so a nearly black screen does not leave the strip faintly lit;
+            // compared before the boost, which would otherwise lift noise over the threshold
             double luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            if (luma < cfg.MinLuma) { r = g = b = 0; }
+            if (luma < cfg.MinLuma * boost) { r = g = b = 0; }
 
             if (!_primed)
             {

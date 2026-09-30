@@ -1125,6 +1125,11 @@ public partial class MainWindow : Window
             panel.Children.Add(Slider(Loc.T("color.brightness"), _cfg.MaxBrightness, 0, 1, 0.01,
                 v => _cfg.MaxBrightness = v, help: Loc.T("color.brightness.note")));
 
+            panel.Children.Add(Slider(Loc.T("color.boost"), _cfg.Boost, 1, 5, 0.1,
+                v => _cfg.Boost = v,
+                v => v <= 1.0 ? Loc.T("off") : "×" + v.ToString("0.0"),
+                Loc.T("color.boost.note")));
+
             // cubic response: the useful range is the bottom few percent, and a linear
             // slider spends nearly all its travel on values that just black the strip out
             panel.Children.Add(Slider(Loc.T("color.minluma"), Math.Pow(_cfg.MinLuma / 0.3, 1.0 / 3.0), 0, 1, 0.005,

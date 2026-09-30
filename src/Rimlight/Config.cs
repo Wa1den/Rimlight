@@ -226,6 +226,9 @@ public sealed class RimlightConfig
 
     // ---- colour -------------------------------------------------------------
     public double MaxBrightness { get; set; } = 1.0;      // 0..1 overall cap
+
+    /// <summary>Per-LED stretch towards full - see <see cref="ColorSettings.Boost"/>.</summary>
+    public double Boost { get; set; } = 1.0;
     public double MinLuma { get; set; } = 0.0;            // below this the strip goes dark
 
     /// <summary>
@@ -322,6 +325,7 @@ public sealed class RimlightConfig
     public ColorSettings ToColorSettings() => new()
     {
         MaxBrightness = MaxBrightness,
+        Boost = Boost,
         MinLuma = MinLuma,
         Saturation = Saturation,
         Gamma = Gamma,
@@ -722,6 +726,7 @@ public sealed record DeviceProfile
     public double DepthPercent { get; init; } = D.DepthPercent;
 
     public double MaxBrightness { get; init; } = D.MaxBrightness;
+    public double Boost { get; init; } = D.Boost;
     public double MinLuma { get; init; } = D.MinLuma;
     public double ShadowNeutral { get; init; } = D.ShadowNeutral;
     public double MinBacklight { get; init; } = D.MinBacklight;

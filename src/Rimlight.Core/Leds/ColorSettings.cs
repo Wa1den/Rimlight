@@ -11,6 +11,16 @@ namespace Rimlight.Leds;
 public readonly record struct ColorSettings
 {
     public double MaxBrightness { get; init; } = 1.0;   // 0..1 overall cap
+
+    /// <summary>
+    /// How far each LED is stretched towards full, in linear light. One switches it off.
+    ///
+    /// The same idea as Prismatik's over-brightening: one factor for all three channels,
+    /// stopped where the brightest channel reaches the top, so the hue stays and a colour
+    /// already near full goes to full. Prismatik multiplies gamma-encoded values by
+    /// 1 + 0.05 N; its 10 is x1.5 there, about x2.4 here at gamma 2.2.
+    /// </summary>
+    public double Boost { get; init; } = 1.0;
     public double MinLuma { get; init; } = 0.0;         // below this the output goes dark
     public double Saturation { get; init; } = 1.0;      // 1 = untouched
     public double Gamma { get; init; } = 2.2;           // 2.2 = neutral round trip

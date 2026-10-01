@@ -69,6 +69,9 @@ public partial class MainWindow : Window
 
     int _patchIndex;
 
+    /// <summary>Strip brightness under a test colour; session state, like the colour itself.</summary>
+    double _patchBrightness = 0.5;
+
     /// <summary>
     /// Editing a count field fires per keystroke, and each rebuild reopens the port because
     /// the LED total lives in the frame header. Settling first means one rebuild per edit
@@ -1237,6 +1240,10 @@ public partial class MainWindow : Window
             stepRow.Children.Add(forward);
             stepRow.Children.Add(_patchText);
             panel.Children.Add(stepRow);
+
+            panel.Children.Add(Slider(Loc.T("calib.patches.brightness"), _patchBrightness, 0.1, 1, 0.05,
+                v => { _patchBrightness = v; UpdatePatchControls(); },
+                v => (v * 100).ToString("0") + " %", Loc.T("calib.patches.brightness.note")));
             UpdatePatchControls();
 
             var tuning = new List<UIElement>();
@@ -1601,6 +1608,8 @@ public partial class MainWindow : Window
 
     void UpdatePatchControls()
     {
+        _engine.PatchDim = _overlay?.Patch != null ? _patchBrightness : 1.0;
+
         if (_overlayButton != null)
             _overlayButton.Content = Loc.T(_overlay != null && _overlay.Patch == null
                 ? "layout.overlay.hide" : "layout.overlay.show");

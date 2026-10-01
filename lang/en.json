@@ -213,6 +213,8 @@
   "calib.patches.show": "Show test colours",
   "calib.patches.hide": "Hide test colours",
   "calib.patches.note": "The colour fills the sampling zones out to the screen edge on top of all windows, leaving the middle of the screen free. The arrows switch the colour, Esc removes it. Room light changes the colour of the wall, so compare with the light off or dim.",
+  "calib.patches.brightness": "Strip brightness in test",
+  "calib.patches.brightness.note": "Dims the strip while a test colour is shown, so the light on the wall can be compared with the band on screen at a similar brightness. All channels are reduced in the same proportion, so the hue does not change and what is matched here holds at full brightness. The darkness threshold, minimum backlight and shadow desaturation are suspended during the test. Below 20% the weak channels of mixed colours lose precision to rounding.",
   "calib.patch.value": "{0} ({1}, {2}, {3})",
   "calib.patch.white": "White",
   "calib.patch.grey": "Grey",
@@ -239,5 +241,5 @@
   "calib.toMagenta": "to magenta {0}",
   "calib.toCyan": "to cyan {0}",
   "_name": "English",
-  "_version": "42"
+  "_version": "43"
 }

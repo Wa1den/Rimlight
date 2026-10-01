@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "42";
+    const string Version = "43";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -462,6 +462,8 @@ public static class Loc
         ["calib.patches.show"] = "Показать тестовые цвета",
         ["calib.patches.hide"] = "Скрыть тестовые цвета",
         ["calib.patches.note"] = "Цвет заливает зоны выборки до края экрана поверх всех окон, середина экрана остаётся свободной. Стрелки переключают цвет, Esc убирает заливку. Комнатный свет меняет цвет стены, поэтому сравнивают при выключенном или неярком свете.",
+        ["calib.patches.brightness"] = "Яркость ленты в тесте",
+        ["calib.patches.brightness.note"] = "Приглушает ленту, пока показан тестовый цвет, чтобы свет на стене был сравним по яркости с полосой на экране. Все каналы уменьшаются в одной пропорции, поэтому оттенок не меняется и подобранное здесь верно и на полной яркости. На время теста отключаются порог темноты, минимальная подсветка и обесцвечивание тёмного. Ниже 20 % слабые каналы смешанных цветов теряют точность из-за округления.",
         ["calib.patch.value"] = "{0} ({1}, {2}, {3})",
         ["calib.patch.white"] = "Белый",
         ["calib.patch.grey"] = "Серый",
@@ -717,6 +719,8 @@ public static class Loc
         ["calib.patches.show"] = "Show test colours",
         ["calib.patches.hide"] = "Hide test colours",
         ["calib.patches.note"] = "The colour fills the sampling zones out to the screen edge on top of all windows, leaving the middle of the screen free. The arrows switch the colour, Esc removes it. Room light changes the colour of the wall, so compare with the light off or dim.",
+        ["calib.patches.brightness"] = "Strip brightness in test",
+        ["calib.patches.brightness.note"] = "Dims the strip while a test colour is shown, so the light on the wall can be compared with the band on screen at a similar brightness. All channels are reduced in the same proportion, so the hue does not change and what is matched here holds at full brightness. The darkness threshold, minimum backlight and shadow desaturation are suspended during the test. Below 20% the weak channels of mixed colours lose precision to rounding.",
         ["calib.patch.value"] = "{0} ({1}, {2}, {3})",
         ["calib.patch.white"] = "White",
         ["calib.patch.grey"] = "Grey",

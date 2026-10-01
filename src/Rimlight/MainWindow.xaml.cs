@@ -1266,15 +1266,25 @@ public partial class MainWindow : Window
             Tune(Slider(Loc.T("calib.white.g"), _cfg.CalWhiteG, 0.2, 1, 0.005, v => _cfg.CalWhiteG = v, v => v.ToString("0.000")));
             Tune(Slider(Loc.T("calib.white.b"), _cfg.CalWhiteB, 0.2, 1, 0.005, v => _cfg.CalWhiteB = v, v => v.ToString("0.000")));
 
+            // Шкалы оттенка и насыщенности идут по восприятию, а не по доле подмешанного
+            // канала: доля считается в линейном свете, а глаз видит её примерно в степени
+            // 1/2,2. На линейной шкале насыщенность от 0,95 до 1 давала заметно больше, чем
+            // весь остальной ход. Ползунок хранит положение, настройка получает долю.
+            const double Curve = 2.2, HueMax = 0.5;
+            static double HueFromPos(double v) => Math.Sign(v) * HueMax * Math.Pow(Math.Abs(v), Curve);
+            static double PosFromHue(double h) => Math.Sign(h) * Math.Pow(Math.Min(1, Math.Abs(h) / HueMax), 1 / Curve);
+            static double SatFromPos(double v) => 1 - Math.Pow(1 - v, Curve);
+            static double PosFromSat(double k) => 1 - Math.Pow(Math.Clamp(1 - k, 0, 1), 1 / Curve);
+
             void Primary(string name, string plus, string minus, double hue, Action<double> setHue,
                          double sat, Action<double> setSat)
             {
                 Tune(Header(Loc.T(name)));
-                Tune(Slider(Loc.T("calib.hue"), hue, -0.5, 0.5, 0.01, setHue,
+                Tune(Slider(Loc.T("calib.hue"), PosFromHue(hue), -1, 1, 0.01, v => setHue(HueFromPos(v)),
                     v => Math.Abs(v) < 0.005 ? "0"
                         : string.Format(Loc.T(v > 0 ? plus : minus), Math.Abs(v).ToString("0.00")),
                     Loc.T("calib.hue.note")));
-                Tune(Slider(Loc.T("calib.sat"), sat, 0, 1, 0.01, setSat,
+                Tune(Slider(Loc.T("calib.sat"), PosFromSat(sat), 0, 1, 0.01, v => setSat(SatFromPos(v)),
                     v => v.ToString("0.00"), Loc.T("calib.sat.note")));
             }
 

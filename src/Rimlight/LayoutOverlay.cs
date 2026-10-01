@@ -17,6 +17,11 @@ namespace Rimlight;
 /// physical strip instead of guessed at. Clicking a cell marks it, and the engine lights
 /// the matching LED green - which is what actually tells you whether cell 37 on screen is
 /// LED 37 on the wall.
+///
+/// The same window carries the calibration patches: every zone is filled with one test
+/// colour and stretched out to the screen edge, so the band next to the wall and the light
+/// on the wall can be compared side by side. The middle stays click-through, which keeps
+/// the settings window usable on a single monitor while the patch is up.
 /// </summary>
 public sealed class LayoutOverlay : Window
 {
@@ -34,6 +39,10 @@ public sealed class LayoutOverlay : Window
 
     LedZone[] _zones = Array.Empty<LedZone>();
     int _selected = -1;
+    Brush? _patch;
+
+    /// <summary>Test colour the zones are filled with, or null for the numbered map.</summary>
+    public Color? Patch => (_patch as SolidColorBrush)?.Color;
 
     /// <summary>Fires with the clicked LED index, or -1 when the selection is cleared.</summary>
     public event Action<int>? SelectionChanged;
@@ -110,6 +119,22 @@ public sealed class LayoutOverlay : Window
         Paint();
     }
 
+    public void SetPatch(Color? color)
+    {
+        _patch = color is { } c ? new SolidColorBrush(c) : null;
+
+        foreach (var cell in _cells)
+        {
+            cell.Stroke = _patch == null ? CellStroke : null;
+            cell.IsHitTestVisible = _patch == null;
+        }
+        foreach (var label in _labels)
+            label.Visibility = _patch == null ? Visibility.Visible : Visibility.Collapsed;
+
+        Arrange();
+        Paint();
+    }
+
     void Select(int index)
     {
         _selected = index;
@@ -125,7 +150,7 @@ public sealed class LayoutOverlay : Window
         // WPF renders in software and pushes whole, so touching every cell means redrawing
         // 3440x1440 instead of one small rectangle.
         for (int i = 0; i < _cells.Count; i++)
-            _cells[i].Fill = i == _selected ? CellFillSelected : CellFill;
+            _cells[i].Fill = _patch ?? (i == _selected ? CellFillSelected : CellFill);
     }
 
     /// <summary>
@@ -137,13 +162,36 @@ public sealed class LayoutOverlay : Window
         double w = _canvas.ActualWidth, h = _canvas.ActualHeight;
         if (w < 10 || h < 10) return;
 
+        // крайние зоны верха и низа заливки дотягиваются до углов экрана
+        double cornerLeft = 1, cornerRight = 0;
+        foreach (var z in _zones)
+            if (z.Side is Side.Top or Side.Bottom)
+            {
+                cornerLeft = Math.Min(cornerLeft, z.X0);
+                cornerRight = Math.Max(cornerRight, z.X1);
+            }
+
         for (int i = 0; i < _cells.Count && i < _zones.Length; i++)
         {
             var z = _zones[i];
             var cell = _cells[i];
+            if (_patch != null)
+            {
+                z = ToEdge(z);
+                if (z.Side is Side.Top or Side.Bottom)
+                {
+                    // с допуском: верх и низ считаются в разные стороны, и края расходятся
+                    // в последнем знаке
+                    if (z.X0 <= cornerLeft + 1e-6) z = z with { X0 = 0 };
+                    if (z.X1 >= cornerRight - 1e-6) z = z with { X1 = 1 };
+                }
+            }
 
             double cw = Math.Max(1, (z.X1 - z.X0) * w);
             double chh = Math.Max(1, (z.Y1 - z.Y0) * h);
+
+            // заливка без зазоров между соседними зонами
+            if (_patch != null) { cw += 1; chh += 1; }
 
             cell.Width = cw;
             cell.Height = chh;
@@ -156,4 +204,17 @@ public sealed class LayoutOverlay : Window
             Canvas.SetTop(label, z.Y0 * h + (chh - label.DesiredSize.Height) / 2);
         }
     }
+
+    /// <summary>
+    /// Extends a zone to the screen edge it sits against. The edge margin otherwise leaves
+    /// a strip of desktop between the patch and the bezel, right where the eye compares it
+    /// with the wall.
+    /// </summary>
+    static LedZone ToEdge(LedZone z) => z.Side switch
+    {
+        Side.Left => z with { X0 = 0 },
+        Side.Right => z with { X1 = 1 },
+        Side.Top => z with { Y0 = 0 },
+        _ => z with { Y1 = 1 }
+    };
 }

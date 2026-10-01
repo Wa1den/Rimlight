@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "41";
+    const string Version = "44";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -244,6 +244,7 @@ public static class Loc
         ["tab.crop"] = "Кадрирование",
         ["tab.brightness"] = "Яркость",
         ["tab.color"] = "Цвет",
+        ["tab.calibration"] = "Калибровка",
         ["tab.capture"] = "Захват",
         ["tab.power"] = "Питание",
         ["tab.about"] = "О программе",
@@ -368,6 +369,7 @@ public static class Loc
         ["color.gainR"] = "Усиление красного",
         ["color.gainG"] = "Усиление зелёного",
         ["color.gainB"] = "Усиление синего",
+        ["color.calibrated"] = "Баланс белого задан в разделе «Калибровка».",
         ["color.dither"] = "Дизеринг",
         ["color.dither.note"] = "Сглаживает ступени на тёмных сценах, перенося ошибку округления на соседний диод.",
         ["color.rise"] = "Сглаживание: подъём",
@@ -455,7 +457,38 @@ public static class Loc
         ["capture.autoSuffix"] = "авто",
         ["layout.overlay.show"] = "Показать схему на экране",
         ["layout.overlay.hide"] = "Скрыть схему",
-        ["layout.overlay.note"] = "Схема отображается поверх всех окон на выбранном мониторе и обновляется при изменении настроек. Щелчок по ячейке подсвечивает её и соответствующий светодиод зелёным: так проверяется соответствие номеров. Esc закрывает схему."
+        ["layout.overlay.note"] = "Схема отображается поверх всех окон на выбранном мониторе и обновляется при изменении настроек. Щелчок по ячейке подсвечивает её и соответствующий светодиод зелёным: так проверяется соответствие номеров. Esc закрывает схему.",
+        ["calib.head"] = "Тестовый цвет выводится по краям экрана, и свет на стене сравнивается с ним.",
+        ["calib.patches.show"] = "Показать тестовые цвета",
+        ["calib.patches.hide"] = "Скрыть тестовые цвета",
+        ["calib.patches.note"] = "Заливка ложится по краям экрана поверх всех окон. Esc убирает её.",
+        ["calib.patches.brightness"] = "Яркость ленты в тесте",
+        ["calib.patches.brightness.note"] = "Действует только во время теста. Оттенок от неё не зависит.",
+        ["calib.patch.value"] = "{0} ({1}, {2}, {3})",
+        ["calib.patch.white"] = "Белый",
+        ["calib.patch.grey"] = "Серый",
+        ["calib.patch.red"] = "Красный",
+        ["calib.patch.green"] = "Зелёный",
+        ["calib.patch.blue"] = "Синий",
+        ["calib.patch.yellow"] = "Жёлтый",
+        ["calib.patch.orange"] = "Оранжевый",
+        ["calib.patch.cyan"] = "Бирюзовый",
+        ["calib.patch.sky"] = "Голубой",
+        ["calib.patch.magenta"] = "Пурпурный",
+        ["calib.enable"] = "Тонкая настройка цветов",
+        ["calib.enable.note"] = "Заменяет температуру и усиление каналов из раздела «Цвет». Белая точка при первом включении берётся оттуда же.",
+        ["calib.white"] = "Белая точка",
+        ["calib.white.note"] = "Подбирается по белому и серому тестовым цветам.",
+        ["calib.white.r"] = "Красный канал",
+        ["calib.white.g"] = "Зелёный канал",
+        ["calib.white.b"] = "Синий канал",
+        ["calib.hue"] = "Оттенок",
+        ["calib.hue.note"] = "Сдвигает цвет к соседнему. Подбирается по тестовому цвету с тем же названием.",
+        ["calib.sat"] = "Насыщенность",
+        ["calib.sat.note"] = "Ниже единицы цвет бледнеет.",
+        ["calib.toYellow"] = "к жёлтому {0}",
+        ["calib.toMagenta"] = "к пурпурному {0}",
+        ["calib.toCyan"] = "к бирюзовому {0}"
     };
 
     static Dictionary<string, string> English() => new()
@@ -468,6 +501,7 @@ public static class Loc
         ["tab.crop"] = "Cropping",
         ["tab.brightness"] = "Brightness",
         ["tab.color"] = "Colour",
+        ["tab.calibration"] = "Calibration",
         ["tab.capture"] = "Capture",
         ["tab.power"] = "Power",
         ["tab.about"] = "About",
@@ -592,6 +626,7 @@ public static class Loc
         ["color.gainR"] = "Red gain",
         ["color.gainG"] = "Green gain",
         ["color.gainB"] = "Blue gain",
+        ["color.calibrated"] = "White balance is set in the Calibration section.",
         ["color.dither"] = "Dithering",
         ["color.dither.note"] = "Smooths banding in dark scenes by passing the rounding error to the next LED.",
         ["color.rise"] = "Smoothing: rise",
@@ -679,6 +714,37 @@ public static class Loc
         ["capture.autoSuffix"] = "auto",
         ["layout.overlay.show"] = "Show map on screen",
         ["layout.overlay.hide"] = "Hide map",
-        ["layout.overlay.note"] = "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map."
+        ["layout.overlay.note"] = "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
+        ["calib.head"] = "The test colour is shown along the screen edges for comparison with the light on the wall.",
+        ["calib.patches.show"] = "Show test colours",
+        ["calib.patches.hide"] = "Hide test colours",
+        ["calib.patches.note"] = "The colour fills the screen edges on top of all windows. Esc removes it.",
+        ["calib.patches.brightness"] = "Strip brightness in test",
+        ["calib.patches.brightness.note"] = "Applies only during the test. The hue does not depend on it.",
+        ["calib.patch.value"] = "{0} ({1}, {2}, {3})",
+        ["calib.patch.white"] = "White",
+        ["calib.patch.grey"] = "Grey",
+        ["calib.patch.red"] = "Red",
+        ["calib.patch.green"] = "Green",
+        ["calib.patch.blue"] = "Blue",
+        ["calib.patch.yellow"] = "Yellow",
+        ["calib.patch.orange"] = "Orange",
+        ["calib.patch.cyan"] = "Cyan",
+        ["calib.patch.sky"] = "Sky blue",
+        ["calib.patch.magenta"] = "Magenta",
+        ["calib.enable"] = "Fine colour tuning",
+        ["calib.enable.note"] = "Replaces the temperature and channel gains of the Colour section. On first use the white point is taken from there.",
+        ["calib.white"] = "White point",
+        ["calib.white.note"] = "Matched with the white and grey test colours.",
+        ["calib.white.r"] = "Red channel",
+        ["calib.white.g"] = "Green channel",
+        ["calib.white.b"] = "Blue channel",
+        ["calib.hue"] = "Hue",
+        ["calib.hue.note"] = "Moves the colour towards its neighbour. Matched with the test colour of the same name.",
+        ["calib.sat"] = "Saturation",
+        ["calib.sat.note"] = "Below one the colour gets paler.",
+        ["calib.toYellow"] = "to yellow {0}",
+        ["calib.toMagenta"] = "to magenta {0}",
+        ["calib.toCyan"] = "to cyan {0}"
     };
 }

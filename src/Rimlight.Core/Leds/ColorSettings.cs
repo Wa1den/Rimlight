@@ -31,6 +31,15 @@ public readonly record struct ColorSettings
     public bool Dithering { get; init; } = true;
 
     /// <summary>
+    /// Full colour correction in place of the white balance. Null leaves the balance to
+    /// <see cref="TemperatureK"/> and the gains; set, those three are not read at all.
+    ///
+    /// Replacing rather than stacking: the matrix carries its own white point, and a
+    /// temperature left on top of it would move white away from where it was matched.
+    /// </summary>
+    public ColorMatrix? Calibration { get; init; }
+
+    /// <summary>
     /// Ceiling on the mean duty across the whole strip, 0..1. One means no ceiling.
     ///
     /// A fraction rather than a current, because what a duty costs in amperes depends on

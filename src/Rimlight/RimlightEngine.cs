@@ -543,8 +543,12 @@ public sealed class RimlightEngine : IDisposable
                 lastMs = startMs;
                 lock (_sendGate)
                 {
-                    _pipeline.Process(_sampled, _output, _cfg.ToColorSettings(), _zones.Length, dt <= 0 ? periodMs : dt);
-                    NeutraliseShadows(_cfg.ShadowNeutral);
+                    var colour = _cfg.ToColorSettings();
+                    double dim = PatchDim;
+                    if (dim < 1)
+                        colour = colour with { MaxBrightness = colour.MaxBrightness * dim, MinLuma = 0, MinBacklight = 0 };
+                    _pipeline.Process(_sampled, _output, colour, _zones.Length, dt <= 0 ? periodMs : dt);
+                    NeutraliseShadows(dim < 1 ? 0 : _cfg.ShadowNeutral);
                 }
                 MeasureDuty();
 
@@ -787,6 +791,16 @@ public sealed class RimlightEngine : IDisposable
 
     static byte Fade(double luma, double channel, double keep) =>
         (byte)Math.Clamp(Math.Round(luma + (channel - luma) * keep), 0, 255);
+
+    /// <summary>
+    /// Dims the strip while a calibration test colour is up; one leaves it alone.
+    ///
+    /// One factor on all three channels in linear light keeps their ratios, so a hue matched
+    /// at 40% holds at full. The darkness cutoff, the backlight floor and the shadow fade
+    /// act by level and would start reshaping a dimmed test colour, so they are suspended
+    /// for as long as this is below one.
+    /// </summary>
+    public double PatchDim { get; set; } = 1.0;
 
     /// <summary>Latest colours actually sent, for the on-screen preview.</summary>
     public void CopyPreview(byte[] dest)

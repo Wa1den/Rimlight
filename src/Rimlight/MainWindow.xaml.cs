@@ -44,7 +44,33 @@ public partial class MainWindow : Window
     TextBlock _cropStatus = null!;
     LayoutOverlay? _overlay;
     Button _overlayButton = null!;
+    Button? _patchButton;
+    TextBlock? _patchText;
     int _overlayLayoutVersion = -1;
+
+    /// <summary>
+    /// Test colours for calibration, in the order they are worth going through: white and
+    /// grey for the balance, the three primaries for the hue and saturation sliders, then
+    /// the mixtures that show whether the primaries came out right.
+    /// </summary>
+    static readonly (string key, Color color)[] Patches =
+    {
+        ("calib.patch.white", Color.FromRgb(255, 255, 255)),
+        ("calib.patch.grey", Color.FromRgb(128, 128, 128)),
+        ("calib.patch.red", Color.FromRgb(255, 0, 0)),
+        ("calib.patch.green", Color.FromRgb(0, 255, 0)),
+        ("calib.patch.blue", Color.FromRgb(0, 0, 255)),
+        ("calib.patch.yellow", Color.FromRgb(255, 255, 0)),
+        ("calib.patch.orange", Color.FromRgb(255, 128, 0)),
+        ("calib.patch.cyan", Color.FromRgb(0, 255, 255)),
+        ("calib.patch.sky", Color.FromRgb(0, 128, 255)),
+        ("calib.patch.magenta", Color.FromRgb(255, 0, 255))
+    };
+
+    int _patchIndex;
+
+    /// <summary>Strip brightness under a test colour; session state, like the colour itself.</summary>
+    double _patchBrightness = 0.5;
 
     /// <summary>
     /// Editing a count field fires per keystroke, and each rebuild reopens the port because
@@ -1060,7 +1086,7 @@ public partial class MainWindow : Window
             var overlayRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
             _overlayButton = new Button
             {
-                Content = Loc.T(_overlay != null ? "layout.overlay.hide" : "layout.overlay.show"),
+                Content = Loc.T(_overlay != null && _overlay.Patch == null ? "layout.overlay.hide" : "layout.overlay.show"),
                 Padding = new Thickness(8, 5, 8, 5)
             };
             _overlayButton.Click += (_, _) => ToggleOverlay();
@@ -1162,10 +1188,24 @@ public partial class MainWindow : Window
         {
             panel.Children.Add(Slider(Loc.T("color.saturation"), _cfg.Saturation, 0, 2.5, 0.05, v => _cfg.Saturation = v));
             panel.Children.Add(Slider(Loc.T("color.gamma"), _cfg.Gamma, 1.0, 3.5, 0.05, v => _cfg.Gamma = v));
-            panel.Children.Add(Slider(Loc.T("color.temperature"), _cfg.TemperatureK, 2000, 10000, 100, v => _cfg.TemperatureK = (int)v));
-            panel.Children.Add(Slider(Loc.T("color.gainR"), _cfg.GainR, 0, 2, 0.01, v => _cfg.GainR = v));
-            panel.Children.Add(Slider(Loc.T("color.gainG"), _cfg.GainG, 0, 2, 0.01, v => _cfg.GainG = v));
-            panel.Children.Add(Slider(Loc.T("color.gainB"), _cfg.GainB, 0, 2, 0.01, v => _cfg.GainB = v));
+
+            // При калибровке белая точка берётся из её раздела, и эти четыре ползунка не
+            // читаются. Блокировку показывает прозрачность: отключённый ползунок Fluent
+            // выглядит как включённый.
+            if (_cfg.Calibration) panel.Children.Add(Note(Loc.T("color.calibrated")));
+            var balance = new[]
+            {
+                Slider(Loc.T("color.temperature"), _cfg.TemperatureK, 2000, 10000, 100, v => _cfg.TemperatureK = (int)v),
+                Slider(Loc.T("color.gainR"), _cfg.GainR, 0, 2, 0.01, v => _cfg.GainR = v),
+                Slider(Loc.T("color.gainG"), _cfg.GainG, 0, 2, 0.01, v => _cfg.GainG = v),
+                Slider(Loc.T("color.gainB"), _cfg.GainB, 0, 2, 0.01, v => _cfg.GainB = v)
+            };
+            foreach (var row in balance)
+            {
+                row.IsEnabled = !_cfg.Calibration;
+                row.Opacity = _cfg.Calibration ? DisabledOpacity : 1;
+                panel.Children.Add(row);
+            }
 
             panel.Children.Add(Check(Loc.T("color.dither"), _cfg.Dithering, v => _cfg.Dithering = v,
                 Loc.T("color.dither.note")));
@@ -1174,6 +1214,92 @@ public partial class MainWindow : Window
                 v => _cfg.SmoothingRise = v, help: Loc.T("color.rise.note")));
             panel.Children.Add(Slider(Loc.T("color.fall"), _cfg.SmoothingFall, 0.02, 1, 0.01,
                 v => _cfg.SmoothingFall = v, help: Loc.T("color.fall.note")));
+        });
+
+        AddTab(Loc.T("tab.calibration"), "", panel =>
+        {
+            panel.Children.Add(Note(Loc.T("calib.head")));
+
+            var patchRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            _patchButton = new Button { Padding = new Thickness(8, 5, 8, 5) };
+            _patchButton.Click += (_, _) => TogglePatch();
+            patchRow.Children.Add(_patchButton);
+            patchRow.Children.Add(HelpIcon(Loc.T("calib.patches.note")));
+            panel.Children.Add(patchRow);
+
+            // стрелки стоят перед названием цвета и не сдвигаются при его смене
+            var stepRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            var back = new Button { Content = "", FontFamily = (FontFamily)FindResource("Icons"), Padding = new Thickness(10, 8, 10, 8) };
+            var forward = new Button { Content = "", FontFamily = (FontFamily)FindResource("Icons"), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(6, 0, 0, 0) };
+            back.Click += (_, _) => StepPatch(-1);
+            forward.Click += (_, _) => StepPatch(1);
+            _patchText = Text("");
+            _patchText.Margin = new Thickness(12, 0, 0, 0);
+            _patchText.VerticalAlignment = VerticalAlignment.Center;
+            stepRow.Children.Add(back);
+            stepRow.Children.Add(forward);
+            stepRow.Children.Add(_patchText);
+            panel.Children.Add(stepRow);
+
+            panel.Children.Add(Slider(Loc.T("calib.patches.brightness"), _patchBrightness, 0.1, 1, 0.05,
+                v => { _patchBrightness = v; UpdatePatchControls(); },
+                v => (v * 100).ToString("0") + " %", Loc.T("calib.patches.brightness.note")));
+            UpdatePatchControls();
+
+            var tuning = new List<UIElement>();
+            void Tune(UIElement e) { tuning.Add(e); panel.Children.Add(e); }
+
+            panel.Children.Add(Check(Loc.T("calib.enable"), _cfg.Calibration, v =>
+            {
+                // первое включение начинает с белого, уже подобранного в разделе «Цвет»
+                if (v && _cfg.CalWhiteR >= 1 && _cfg.CalWhiteG >= 1 && _cfg.CalWhiteB >= 1)
+                    _cfg.SeedCalibrationWhite();
+                _cfg.Calibration = v;
+
+                // пересборка ставит _rebuildingUi, и отметка после обработчика не сработает
+                MarkDirty();
+                BuildSettings();
+            }, Loc.T("calib.enable.note")));
+
+            Tune(Header(Loc.T("calib.white"), Loc.T("calib.white.note")));
+            Tune(Slider(Loc.T("calib.white.r"), _cfg.CalWhiteR, 0.2, 1, 0.005, v => _cfg.CalWhiteR = v, v => v.ToString("0.000")));
+            Tune(Slider(Loc.T("calib.white.g"), _cfg.CalWhiteG, 0.2, 1, 0.005, v => _cfg.CalWhiteG = v, v => v.ToString("0.000")));
+            Tune(Slider(Loc.T("calib.white.b"), _cfg.CalWhiteB, 0.2, 1, 0.005, v => _cfg.CalWhiteB = v, v => v.ToString("0.000")));
+
+            // Шкалы оттенка и насыщенности идут по восприятию, а не по доле подмешанного
+            // канала: доля считается в линейном свете, а глаз видит её примерно в степени
+            // 1/2,2. На линейной шкале насыщенность от 0,95 до 1 давала заметно больше, чем
+            // весь остальной ход. Ползунок хранит положение, настройка получает долю.
+            const double Curve = 2.2, HueMax = 0.5;
+            static double HueFromPos(double v) => Math.Sign(v) * HueMax * Math.Pow(Math.Abs(v), Curve);
+            static double PosFromHue(double h) => Math.Sign(h) * Math.Pow(Math.Min(1, Math.Abs(h) / HueMax), 1 / Curve);
+            static double SatFromPos(double v) => 1 - Math.Pow(1 - v, Curve);
+            static double PosFromSat(double k) => 1 - Math.Pow(Math.Clamp(1 - k, 0, 1), 1 / Curve);
+
+            void Primary(string name, string plus, string minus, double hue, Action<double> setHue,
+                         double sat, Action<double> setSat)
+            {
+                Tune(Header(Loc.T(name)));
+                Tune(Slider(Loc.T("calib.hue"), PosFromHue(hue), -1, 1, 0.01, v => setHue(HueFromPos(v)),
+                    v => Math.Abs(v) < 0.005 ? "0"
+                        : string.Format(Loc.T(v > 0 ? plus : minus), Math.Abs(v).ToString("0.00")),
+                    Loc.T("calib.hue.note")));
+                Tune(Slider(Loc.T("calib.sat"), PosFromSat(sat), 0, 1, 0.01, v => setSat(SatFromPos(v)),
+                    v => v.ToString("0.00"), Loc.T("calib.sat.note")));
+            }
+
+            Primary("calib.patch.red", "calib.toYellow", "calib.toMagenta",
+                _cfg.CalHueR, v => _cfg.CalHueR = v, _cfg.CalSatR, v => _cfg.CalSatR = v);
+            Primary("calib.patch.green", "calib.toCyan", "calib.toYellow",
+                _cfg.CalHueG, v => _cfg.CalHueG = v, _cfg.CalSatG, v => _cfg.CalSatG = v);
+            Primary("calib.patch.blue", "calib.toMagenta", "calib.toCyan",
+                _cfg.CalHueB, v => _cfg.CalHueB = v, _cfg.CalSatB, v => _cfg.CalSatB = v);
+
+            foreach (var e in tuning)
+            {
+                e.IsEnabled = _cfg.Calibration;
+                e.Opacity = _cfg.Calibration ? 1 : DisabledOpacity;
+            }
         });
 
         AddTab(Loc.T("tab.capture"), "", panel =>
@@ -1470,9 +1596,50 @@ public partial class MainWindow : Window
         RebuildPreview();
     }
 
+    /// <summary>The numbered map; it replaces a test colour in the same window.</summary>
     void ToggleOverlay()
     {
-        if (_overlay != null) { _overlay.Close(); return; }      // Closed handler tidies up
+        if (_overlay != null && _overlay.Patch == null) { _overlay.Close(); return; }   // Closed tidies up
+        ShowOverlay(null);
+    }
+
+    void TogglePatch()
+    {
+        if (_overlay?.Patch != null) { _overlay.Close(); return; }
+        ShowOverlay(Patches[_patchIndex].color);
+    }
+
+    void StepPatch(int step)
+    {
+        _patchIndex = (_patchIndex + step + Patches.Length) % Patches.Length;
+        if (_overlay?.Patch != null) _overlay.SetPatch(Patches[_patchIndex].color);
+        UpdatePatchControls();
+    }
+
+    void UpdatePatchControls()
+    {
+        _engine.PatchDim = _overlay?.Patch != null ? _patchBrightness : 1.0;
+
+        if (_overlayButton != null)
+            _overlayButton.Content = Loc.T(_overlay != null && _overlay.Patch == null
+                ? "layout.overlay.hide" : "layout.overlay.show");
+        if (_patchButton != null)
+            _patchButton.Content = Loc.T(_overlay?.Patch != null ? "calib.patches.hide" : "calib.patches.show");
+        if (_patchText != null)
+        {
+            var (key, c) = Patches[_patchIndex];
+            _patchText.Text = string.Format(Loc.T("calib.patch.value"), Loc.T(key), c.R, c.G, c.B);
+        }
+    }
+
+    void ShowOverlay(Color? patch)
+    {
+        if (_overlay != null)
+        {
+            _overlay.SetPatch(patch);
+            UpdatePatchControls();
+            return;
+        }
 
         var monitor = _engine.Monitor;
         if (monitor == null) return;
@@ -1486,13 +1653,14 @@ public partial class MainWindow : Window
         {
             _overlay = null;
             _overlayLayoutVersion = -1;
-            if (_overlayButton != null) _overlayButton.Content = Loc.T("layout.overlay.show");
+            UpdatePatchControls();
         };
 
         _overlay.Show();
         _overlay.SetZones(_engine.Zones);
+        _overlay.SetPatch(patch);
         _overlayLayoutVersion = _engine.LayoutVersion;
-        _overlayButton.Content = Loc.T("layout.overlay.hide");
+        UpdatePatchControls();
     }
 
     /// <summary>
@@ -2011,6 +2179,9 @@ public partial class MainWindow : Window
         Foreground = Res(dim ? "FgDim" : "Fg"),
         TextWrapping = TextWrapping.Wrap
     };
+
+    /// <summary>Settings that are switched off by another one; see the colour section.</summary>
+    const double DisabledOpacity = 0.45;
 
     TextBlock Note(string text)
     {

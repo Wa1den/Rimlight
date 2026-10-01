@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "41";
+    const string Version = "42";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -244,6 +244,7 @@ public static class Loc
         ["tab.crop"] = "Кадрирование",
         ["tab.brightness"] = "Яркость",
         ["tab.color"] = "Цвет",
+        ["tab.calibration"] = "Калибровка",
         ["tab.capture"] = "Захват",
         ["tab.power"] = "Питание",
         ["tab.about"] = "О программе",
@@ -368,6 +369,7 @@ public static class Loc
         ["color.gainR"] = "Усиление красного",
         ["color.gainG"] = "Усиление зелёного",
         ["color.gainB"] = "Усиление синего",
+        ["color.calibrated"] = "Включена калибровка: белую точку задаёт раздел «Калибровка», температура и усиление каналов не действуют.",
         ["color.dither"] = "Дизеринг",
         ["color.dither.note"] = "Сглаживает ступени на тёмных сценах, перенося ошибку округления на соседний диод.",
         ["color.rise"] = "Сглаживание: подъём",
@@ -455,7 +457,36 @@ public static class Loc
         ["capture.autoSuffix"] = "авто",
         ["layout.overlay.show"] = "Показать схему на экране",
         ["layout.overlay.hide"] = "Скрыть схему",
-        ["layout.overlay.note"] = "Схема отображается поверх всех окон на выбранном мониторе и обновляется при изменении настроек. Щелчок по ячейке подсвечивает её и соответствующий светодиод зелёным: так проверяется соответствие номеров. Esc закрывает схему."
+        ["layout.overlay.note"] = "Схема отображается поверх всех окон на выбранном мониторе и обновляется при изменении настроек. Щелчок по ячейке подсвечивает её и соответствующий светодиод зелёным: так проверяется соответствие номеров. Esc закрывает схему.",
+        ["calib.head"] = "Тестовый цвет выводится по краям выбранного экрана и доходит до ленты тем же путём, что и любая картинка. Свет на стене сравнивается с полосой у края экрана: сначала белый и серый, затем красный, зелёный и синий. Остальные цвета нужны для проверки.",
+        ["calib.patches.show"] = "Показать тестовые цвета",
+        ["calib.patches.hide"] = "Скрыть тестовые цвета",
+        ["calib.patches.note"] = "Цвет заливает зоны выборки до края экрана поверх всех окон, середина экрана остаётся свободной. Стрелки переключают цвет, Esc убирает заливку. Комнатный свет меняет цвет стены, поэтому сравнивают при выключенном или неярком свете.",
+        ["calib.patch.value"] = "{0} ({1}, {2}, {3})",
+        ["calib.patch.white"] = "Белый",
+        ["calib.patch.grey"] = "Серый",
+        ["calib.patch.red"] = "Красный",
+        ["calib.patch.green"] = "Зелёный",
+        ["calib.patch.blue"] = "Синий",
+        ["calib.patch.yellow"] = "Жёлтый",
+        ["calib.patch.orange"] = "Оранжевый",
+        ["calib.patch.cyan"] = "Бирюзовый",
+        ["calib.patch.sky"] = "Голубой",
+        ["calib.patch.magenta"] = "Пурпурный",
+        ["calib.enable"] = "Тонкая настройка цветов",
+        ["calib.enable.note"] = "Заменяет температуру и усиление каналов из раздела «Цвет» своей белой точкой и поправками для красного, зелёного и синего. Основные цвета ленты отличаются от экранных, сильнее всего зелёный, поэтому при верном белом оранжевый и голубой на стене расходятся с экраном. При первом включении белая точка берётся из текущих настроек «Цвета». После выключения снова действует прежний баланс, а значения здесь сохраняются.",
+        ["calib.white"] = "Белая точка",
+        ["calib.white.note"] = "Доля каждого канала на белом экране. Подбирается по белому и серому тестовым цветам. Поправки основных цветов белый не сдвигают, поэтому возвращаться к белой точке после них не нужно.",
+        ["calib.white.r"] = "Красный канал",
+        ["calib.white.g"] = "Зелёный канал",
+        ["calib.white.b"] = "Синий канал",
+        ["calib.hue"] = "Оттенок",
+        ["calib.hue.note"] = "Сдвигает основной цвет ленты к соседнему: к нему подмешивается канал соседа. Подбирается по тестовому цвету с тем же названием, пока свет на стене не совпадёт по оттенку с полосой на экране. Белый не меняется, соседний цвет становится немного темнее.",
+        ["calib.sat"] = "Насыщенность",
+        ["calib.sat.note"] = "Ниже единицы к основному цвету подмешиваются остальные каналы, и он бледнеет. Нужна, когда оттенок на стене уже совпал, а цвет выглядит гуще экранного. Выше единицы шкалы нет: основные цвета диодов и так насыщеннее экрана.",
+        ["calib.toYellow"] = "к жёлтому {0}",
+        ["calib.toMagenta"] = "к пурпурному {0}",
+        ["calib.toCyan"] = "к бирюзовому {0}"
     };
 
     static Dictionary<string, string> English() => new()
@@ -468,6 +499,7 @@ public static class Loc
         ["tab.crop"] = "Cropping",
         ["tab.brightness"] = "Brightness",
         ["tab.color"] = "Colour",
+        ["tab.calibration"] = "Calibration",
         ["tab.capture"] = "Capture",
         ["tab.power"] = "Power",
         ["tab.about"] = "About",
@@ -592,6 +624,7 @@ public static class Loc
         ["color.gainR"] = "Red gain",
         ["color.gainG"] = "Green gain",
         ["color.gainB"] = "Blue gain",
+        ["color.calibrated"] = "Calibration is on: the white point comes from the Calibration section, and the temperature and channel gains have no effect.",
         ["color.dither"] = "Dithering",
         ["color.dither.note"] = "Smooths banding in dark scenes by passing the rounding error to the next LED.",
         ["color.rise"] = "Smoothing: rise",
@@ -679,6 +712,35 @@ public static class Loc
         ["capture.autoSuffix"] = "auto",
         ["layout.overlay.show"] = "Show map on screen",
         ["layout.overlay.hide"] = "Hide map",
-        ["layout.overlay.note"] = "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map."
+        ["layout.overlay.note"] = "The map is shown on top of all windows on the selected monitor and follows setting changes. Clicking a cell highlights it and the matching LED in green to verify the numbering. Esc closes the map.",
+        ["calib.head"] = "The test colour is shown along the edges of the selected screen and reaches the strip the same way as any picture. The light on the wall is compared with the band at the screen edge: white and grey first, then red, green and blue. The other colours are for checking the result.",
+        ["calib.patches.show"] = "Show test colours",
+        ["calib.patches.hide"] = "Hide test colours",
+        ["calib.patches.note"] = "The colour fills the sampling zones out to the screen edge on top of all windows, leaving the middle of the screen free. The arrows switch the colour, Esc removes it. Room light changes the colour of the wall, so compare with the light off or dim.",
+        ["calib.patch.value"] = "{0} ({1}, {2}, {3})",
+        ["calib.patch.white"] = "White",
+        ["calib.patch.grey"] = "Grey",
+        ["calib.patch.red"] = "Red",
+        ["calib.patch.green"] = "Green",
+        ["calib.patch.blue"] = "Blue",
+        ["calib.patch.yellow"] = "Yellow",
+        ["calib.patch.orange"] = "Orange",
+        ["calib.patch.cyan"] = "Cyan",
+        ["calib.patch.sky"] = "Sky blue",
+        ["calib.patch.magenta"] = "Magenta",
+        ["calib.enable"] = "Fine colour tuning",
+        ["calib.enable.note"] = "Replaces the temperature and channel gains of the Colour section with its own white point and corrections for red, green and blue. The strip's primaries differ from the screen's, green most of all, so with white matched orange and sky blue on the wall still differ from the screen. On first use the white point is taken from the current Colour settings. Switching it off brings the previous balance back, and the values here are kept.",
+        ["calib.white"] = "White point",
+        ["calib.white.note"] = "Share of each channel on a white screen. Matched with the white and grey test colours. The primary corrections do not move white, so there is no need to return to the white point after them.",
+        ["calib.white.r"] = "Red channel",
+        ["calib.white.g"] = "Green channel",
+        ["calib.white.b"] = "Blue channel",
+        ["calib.hue"] = "Hue",
+        ["calib.hue.note"] = "Moves the strip's primary towards a neighbour by mixing in the neighbour's channel. Matched with the test colour of the same name until the light on the wall has the hue of the band on screen. White stays the same; the neighbouring colour gets slightly darker.",
+        ["calib.sat"] = "Saturation",
+        ["calib.sat.note"] = "Below one the other channels are mixed into the primary and it gets paler. Used when the hue on the wall already matches but the colour looks deeper than on screen. The scale stops at one: LED primaries are already more saturated than the screen's.",
+        ["calib.toYellow"] = "to yellow {0}",
+        ["calib.toMagenta"] = "to magenta {0}",
+        ["calib.toCyan"] = "to cyan {0}"
     };
 }

@@ -82,6 +82,7 @@ public sealed class ColorPipeline
 
         var (tr, tg, tb) = TemperatureGains(cfg.TemperatureK);
         double gr = tr * cfg.GainR, gg = tg * cfg.GainG, gb = tb * cfg.GainB;
+        var calibration = cfg.Calibration;
         double invGamma = 1.0 / Math.Max(0.1, cfg.Gamma);
 
         // A frame-rate independent EMA: at 60 fps the configured factor applies as-is,
@@ -96,8 +97,9 @@ public sealed class ColorPipeline
             double g = SrgbToLinear(inRgb[o + 1] / 255.0);
             double b = SrgbToLinear(inRgb[o + 2] / 255.0);
 
-            // white balance and per-channel trim (this is what matches the wall colour)
-            r *= gr; g *= gg; b *= gb;
+            // баланс белого под цвет стены, либо калибровка целиком вместо него
+            if (calibration is { } m) m.Apply(ref r, ref g, ref b);
+            else { r *= gr; g *= gg; b *= gb; }
 
             // saturation around the luminance of the pixel itself
             if (Math.Abs(cfg.Saturation - 1.0) > 0.001)

@@ -266,6 +266,42 @@ public sealed class RimlightConfig
     public bool Dithering { get; set; }
 
     /// <summary>
+    /// Colour calibration in place of the temperature and the gains - see
+    /// <see cref="ColorMatrix.FromPrimaries"/>. Off by default, and the values below are
+    /// kept while it is off, so switching it back on returns to the matched state.
+    /// </summary>
+    public bool Calibration { get; set; }
+
+    // белая точка калибровки: доля каждого канала на белом экране
+    public double CalWhiteR { get; set; } = 1.0;
+    public double CalWhiteG { get; set; } = 1.0;
+    public double CalWhiteB { get; set; } = 1.0;
+
+    // сдвиг каждого основного цвета к соседнему и его насыщенность
+    public double CalHueR { get; set; }
+    public double CalHueG { get; set; }
+    public double CalHueB { get; set; }
+    public double CalSatR { get; set; } = 1.0;
+    public double CalSatG { get; set; } = 1.0;
+    public double CalSatB { get; set; } = 1.0;
+
+    /// <summary>
+    /// Starts the calibration white from what the temperature and gains produce now, so
+    /// switching calibration on does not throw away a white already matched to the wall.
+    /// Normalised to the strongest channel, which the white sliders top out at.
+    /// </summary>
+    public void SeedCalibrationWhite()
+    {
+        var (tr, tg, tb) = ColorPipeline.TemperatureGains(TemperatureK);
+        double r = tr * GainR, g = tg * GainG, b = tb * GainB;
+        double max = Math.Max(r, Math.Max(g, b));
+        if (max <= 0) return;
+        CalWhiteR = r / max;
+        CalWhiteG = g / max;
+        CalWhiteB = b / max;
+    }
+
+    /// <summary>
     /// What the strip is allowed to draw, in amperes. Zero, the default, is no ceiling.
     ///
     /// Stated as a current rather than as a share of full brightness because that is what
@@ -334,6 +370,10 @@ public sealed class RimlightConfig
         GainG = GainG,
         GainB = GainB,
         Dithering = Dithering,
+        Calibration = Calibration
+            ? ColorMatrix.FromPrimaries((CalWhiteR, CalWhiteG, CalWhiteB),
+                (CalHueR, CalHueG, CalHueB), (CalSatR, CalSatG, CalSatB))
+            : null,
         MinBacklight = MinBacklight,
         PowerLimit = PowerLimitFraction,
         SmoothingRise = SmoothingRise,
@@ -694,8 +734,8 @@ public sealed class RimlightConfig
 /// <summary>
 /// The part of the settings that belongs to one controller rather than to the program: the
 /// port it hangs on, the strip it drives, and how that strip is tuned - the Layout,
-/// Brightness and Colour sections plus the port. Kept per protocol, so going back to the
-/// other controller brings its own strip back with it.
+/// Brightness, Colour and Calibration sections plus the port. Kept per protocol, so going
+/// back to the other controller brings its own strip back with it.
 ///
 /// Names match the properties of <see cref="RimlightConfig"/> one for one: the two are
 /// copied into each other by name, so a field added here needs no other change. Defaults
@@ -739,6 +779,16 @@ public sealed record DeviceProfile
     public double GainG { get; init; } = D.GainG;
     public double GainB { get; init; } = D.GainB;
     public bool Dithering { get; init; } = D.Dithering;
+    public bool Calibration { get; init; } = D.Calibration;
+    public double CalWhiteR { get; init; } = D.CalWhiteR;
+    public double CalWhiteG { get; init; } = D.CalWhiteG;
+    public double CalWhiteB { get; init; } = D.CalWhiteB;
+    public double CalHueR { get; init; } = D.CalHueR;
+    public double CalHueG { get; init; } = D.CalHueG;
+    public double CalHueB { get; init; } = D.CalHueB;
+    public double CalSatR { get; init; } = D.CalSatR;
+    public double CalSatG { get; init; } = D.CalSatG;
+    public double CalSatB { get; init; } = D.CalSatB;
     public double SmoothingRise { get; init; } = D.SmoothingRise;
     public double SmoothingFall { get; init; } = D.SmoothingFall;
 }

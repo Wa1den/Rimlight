@@ -1187,7 +1187,18 @@ public partial class MainWindow : Window
         AddTab(Loc.T("tab.color"), "", panel =>
         {
             panel.Children.Add(Slider(Loc.T("color.saturation"), _cfg.Saturation, 0, 2.5, 0.05, v => _cfg.Saturation = v));
-            panel.Children.Add(Slider(Loc.T("color.gamma"), _cfg.Gamma, 1.0, 3.5, 0.05, v => _cfg.Gamma = v));
+
+            // Шкала со знаком вокруг нейтральной гаммы 1, по логарифму: равный шаг ползунка
+            // даёт равное относительное изменение. Плюс доходит до прежних 3,5, минус до 0,5.
+            const double GammaUp = 3.5, GammaDown = 0.5;
+            static double GammaFromPos(double v) => Math.Pow(v >= 0 ? GammaUp : 1 / GammaDown, v);
+            static double PosFromGamma(double g) =>
+                Math.Clamp(Math.Log(Math.Max(g, GammaDown)) / Math.Log(g >= 1 ? GammaUp : 1 / GammaDown), -1, 1);
+
+            panel.Children.Add(Slider(Loc.T("color.gamma"), PosFromGamma(_cfg.Gamma), -1, 1, 0.01,
+                v => _cfg.Gamma = GammaFromPos(v),
+                v => Math.Abs(v) < 0.005 ? "0" : v.ToString("+0.00;−0.00"),
+                Loc.T("color.gamma.note")));
 
             // При калибровке белая точка берётся из её раздела, и эти четыре ползунка не
             // читаются. Блокировку показывает прозрачность: отключённый ползунок Fluent

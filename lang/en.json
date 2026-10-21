@@ -122,6 +122,7 @@
   "color.shadow.note": "White balance applies the same tint at every level, so in a nearly black part of the frame that tint is all that reaches the strip: a black player bar with white digits lights it dark red under a warm balance. The lower the brightness, the further the colour is pulled towards grey. Zero switches it off.",
   "color.saturation": "Saturation",
   "color.gamma": "Gamma",
+  "color.gamma.note": "Zero keeps brightness as on screen. Minus darkens shadows and midtones, plus lightens them.",
   "color.temperature": "Colour temperature, K",
   "color.gainR": "Red gain",
   "color.gainG": "Green gain",
@@ -241,5 +242,5 @@
   "calib.toMagenta": "to magenta {0}",
   "calib.toCyan": "to cyan {0}",
   "_name": "English",
-  "_version": "44"
+  "_version": "45"
 }

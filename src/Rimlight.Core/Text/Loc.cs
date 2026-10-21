@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "44";
+    const string Version = "45";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -365,6 +365,7 @@ public static class Loc
         ["color.shadow.note"] = "Баланс белого применяется одинаково ко всем уровням, поэтому на почти чёрном участке экрана от кадра остаётся только оттенок: чёрная полоса плеера с белыми цифрами при тёплом балансе светит тёмно-красным. Чем ниже яркость, тем сильнее цвет сводится к серому. Ноль отключает.",
         ["color.saturation"] = "Насыщенность",
         ["color.gamma"] = "Гамма",
+        ["color.gamma.note"] = "Ноль оставляет яркость как на экране. Минус затемняет тени и средние тона, плюс осветляет их.",
         ["color.temperature"] = "Цветовая температура, K",
         ["color.gainR"] = "Усиление красного",
         ["color.gainG"] = "Усиление зелёного",
@@ -622,6 +623,7 @@ public static class Loc
         ["color.shadow.note"] = "White balance applies the same tint at every level, so in a nearly black part of the frame that tint is all that reaches the strip: a black player bar with white digits lights it dark red under a warm balance. The lower the brightness, the further the colour is pulled towards grey. Zero switches it off.",
         ["color.saturation"] = "Saturation",
         ["color.gamma"] = "Gamma",
+        ["color.gamma.note"] = "Zero keeps brightness as on screen. Minus darkens shadows and midtones, plus lightens them.",
         ["color.temperature"] = "Colour temperature, K",
         ["color.gainR"] = "Red gain",
         ["color.gainG"] = "Green gain",

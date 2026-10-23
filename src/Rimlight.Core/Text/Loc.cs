@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "45";
+    const string Version = "46";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -283,6 +283,7 @@ public static class Loc
         ["main.tray"] = "Сворачивать в трей",
         ["main.startup"] = "Запуск",
         ["main.autostart"] = "Запускать вместе с Windows",
+        ["main.autostart.other"] = "Запускается другая копия по адресу: {0}",
         ["main.settings"] = "Настройки",
         ["main.settings.note"] = "Один файл со всем: экран и порт, раскладка, цвета, захват, питание.",
         ["main.logs"] = "Журнал",
@@ -541,6 +542,7 @@ public static class Loc
         ["main.tray"] = "Minimise to tray",
         ["main.startup"] = "Startup",
         ["main.autostart"] = "Start with Windows",
+        ["main.autostart.other"] = "Another copy starts from: {0}",
         ["main.settings"] = "Settings",
         ["main.settings.note"] = "One file with everything: the screen and port, the layout, colour, capture, power.",
         ["main.logs"] = "Log",

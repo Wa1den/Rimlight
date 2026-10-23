@@ -900,11 +900,26 @@ public partial class MainWindow : Window
             // the registry is the real state; mirror it so a stale stored flag cannot make
             // Cancel silently switch autostart back on or off
             _cfg.Autostart = Autostart.IsEnabled();
+
+            // галка остаётся включённой, если запись ведёт на другую копию: автозапуск есть,
+            // просто не этот; снятие и повторная установка переводят его на эту копию
+            var otherCopy = Text("", dim: true, size: 12);
+            otherCopy.Margin = new Thickness(0, 0, 0, 6);
+            void ShowOtherCopy()
+            {
+                string? other = _cfg.Autostart ? Autostart.OtherCopy() : null;
+                otherCopy.Text = other == null ? "" : string.Format(Loc.T("main.autostart.other"), other);
+                otherCopy.Visibility = other == null ? Visibility.Collapsed : Visibility.Visible;
+            }
+
             panel.Children.Add(Check(Loc.T("main.autostart"), _cfg.Autostart, v =>
             {
                 _cfg.Autostart = v;
                 Autostart.Set(v);
+                ShowOtherCopy();
             }));
+            panel.Children.Add(otherCopy);
+            ShowOtherCopy();
 
             panel.Children.Add(Header(Loc.T("main.settings"), Loc.T("main.settings.note")));
 
@@ -1685,6 +1700,16 @@ public partial class MainWindow : Window
         _dirty = !_cfg.SameSettingsAs(_saved);
     }
 
+    /// <summary>
+    /// Cancel and Defaults touch the Run entry only when the flag really changes. Writing it
+    /// unconditionally moved autostart onto whichever copy the button was pressed in - a
+    /// build being tried out took it over through Cancel alone.
+    /// </summary>
+    void SyncAutostart()
+    {
+        if (_cfg.Autostart != Autostart.IsEnabled()) Autostart.Set(_cfg.Autostart);
+    }
+
     void ApplyChanges()
     {
         _cfg.Save();
@@ -1705,7 +1730,7 @@ public partial class MainWindow : Window
         Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(RimlightConfig.Path)!, "lang"));
         Loc.Load(_cfg.Language);
         ProbeLog.Configure(RimlightConfig.LogPath, _cfg.WriteLog);
-        Autostart.Set(_cfg.Autostart);
+        SyncAutostart();
 
         BuildSettings();      // restores the open section itself
 
@@ -1829,7 +1854,7 @@ public partial class MainWindow : Window
         _cfg.ResetToDefaults();
 
         ProbeLog.Configure(RimlightConfig.LogPath, _cfg.WriteLog);
-        Autostart.Set(_cfg.Autostart);
+        SyncAutostart();
 
         BuildSettings();
         ApplyPreviewLayout();

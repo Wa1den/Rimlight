@@ -44,6 +44,7 @@
   "main.tray": "Minimise to tray",
   "main.startup": "Startup",
   "main.autostart": "Start with Windows",
+  "main.autostart.other": "Another copy starts from: {0}",
   "main.settings": "Settings",
   "main.settings.note": "One file with everything: the screen and port, the layout, colour, capture, power.",
   "main.logs": "Log",
@@ -242,5 +243,5 @@
   "calib.toMagenta": "to magenta {0}",
   "calib.toCyan": "to cyan {0}",
   "_name": "English",
-  "_version": "45"
+  "_version": "46"
 }

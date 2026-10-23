@@ -45,6 +45,9 @@ public partial class MainWindow : Window
     LayoutOverlay? _overlay;
     Button _overlayButton = null!;
     Button? _patchButton;
+
+    /// <summary>Redraws the note under the autostart box; set while the Main section exists.</summary>
+    Action? _refreshAutostart;
     TextBlock? _patchText;
     int _overlayLayoutVersion = -1;
 
@@ -125,6 +128,10 @@ public partial class MainWindow : Window
         Icon = LoadIcon();
         SetupChrome();
         _saved = _cfg.Clone();
+
+        // Реестр и есть настоящее состояние автозапуска. Читается один раз здесь, а не при
+        // каждой пересборке страниц: пересборка затёрла бы снятую, но ещё не применённую галку.
+        _cfg.Autostart = _saved.Autostart = Autostart.IsEnabled();
 
         // Settings written before the switch to the EDID model know only the device name.
         // Filling the model in now rather than at the next Apply: a cable can be moved
@@ -897,14 +904,11 @@ public partial class MainWindow : Window
 
             panel.Children.Add(Header(Loc.T("main.startup")));
 
-            // the registry is the real state; mirror it so a stale stored flag cannot make
-            // Cancel silently switch autostart back on or off
-            _cfg.Autostart = Autostart.IsEnabled();
-
             // галка остаётся включённой, если запись ведёт на другую копию: автозапуск есть,
             // просто не этот; снятие и повторная установка переводят его на эту копию
             var otherCopy = Text("", dim: true, size: 12);
             otherCopy.Margin = new Thickness(0, 0, 0, 6);
+            _refreshAutostart = ShowOtherCopy;
             void ShowOtherCopy()
             {
                 string? other = _cfg.Autostart ? Autostart.OtherCopy() : null;
@@ -914,8 +918,7 @@ public partial class MainWindow : Window
 
             panel.Children.Add(Check(Loc.T("main.autostart"), _cfg.Autostart, v =>
             {
-                _cfg.Autostart = v;
-                Autostart.Set(v);
+                _cfg.Autostart = v;      // в реестр уходит по «Применить»
                 ShowOtherCopy();
             }));
             panel.Children.Add(otherCopy);
@@ -1701,17 +1704,23 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Cancel and Defaults touch the Run entry only when the flag really changes. Writing it
-    /// unconditionally moved autostart onto whichever copy the button was pressed in - a
-    /// build being tried out took it over through Cancel alone.
+    /// Writes the autostart flag to the Run entry on Apply, and only when it differs from what
+    /// is there. Unticking removes the entry whichever copy it points to; ticking writes this
+    /// copy's path.
+    ///
+    /// Cancel and Defaults used to write the entry on the spot, unconditionally, which moved
+    /// autostart onto whichever copy the button was pressed in - a build being tried out took
+    /// it over through Cancel alone.
     /// </summary>
     void SyncAutostart()
     {
         if (_cfg.Autostart != Autostart.IsEnabled()) Autostart.Set(_cfg.Autostart);
+        _refreshAutostart?.Invoke();
     }
 
     void ApplyChanges()
     {
+        SyncAutostart();
         _cfg.Save();
         _saved = _cfg.Clone();
         _dirty = false;
@@ -1730,7 +1739,6 @@ public partial class MainWindow : Window
         Loc.Configure(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(RimlightConfig.Path)!, "lang"));
         Loc.Load(_cfg.Language);
         ProbeLog.Configure(RimlightConfig.LogPath, _cfg.WriteLog);
-        SyncAutostart();
 
         BuildSettings();      // restores the open section itself
 
@@ -1827,6 +1835,9 @@ public partial class MainWindow : Window
         {
             // copy onto the existing instance - the engine holds this very object
             _cfg.CopyFrom(RimlightConfig.LoadFrom(dlg.FileName));
+
+            // автозапуск принадлежит этой машине и этой копии, а не файлу настроек
+            _cfg.Autostart = Autostart.IsEnabled();
             _cfg.Save();
             _saved = _cfg.Clone();
 
@@ -1854,7 +1865,6 @@ public partial class MainWindow : Window
         _cfg.ResetToDefaults();
 
         ProbeLog.Configure(RimlightConfig.LogPath, _cfg.WriteLog);
-        SyncAutostart();
 
         BuildSettings();
         ApplyPreviewLayout();

@@ -151,6 +151,17 @@ public partial class MainWindow : Window
 
         RestoreWindowGeometry();
 
+        // Set before Show rather than in Loaded. Minimising from Loaded left an empty frame
+        // on screen for a second or two while the tray icon and the sections were built - at
+        // logon, with autostart on, that frame was the first thing to appear. MouseKeep 0.7.2
+        // had the same and was fixed the same way.
+        if (_cfg.StartMinimized)
+        {
+            WindowState = WindowState.Minimized;
+            ShowActivated = false;
+            if (_cfg.MinimizeToTray) ShowInTaskbar = false;
+        }
+
         for (int i = 0; i < _statLabels.Length; i++)
         {
             StatsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -209,7 +220,14 @@ public partial class MainWindow : Window
             // the startup pass measured the left column before anything was laid out
             if (!_cfg.ShowPreview) ApplyPreviewLayout();
 
-            if (_cfg.StartMinimized) WindowState = WindowState.Minimized;
+            // StateChanged is not raised for the state the window was shown in, so the move
+            // into the tray is made here; the taskbar button comes back for when the window
+            // is opened from the tray
+            if (_cfg.StartMinimized && _cfg.MinimizeToTray)
+            {
+                Hide();
+                ShowInTaskbar = true;
+            }
 
             // after the engine, and not awaited: a slow answer from GitHub must not hold
             // up the strip lighting

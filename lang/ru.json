@@ -44,6 +44,7 @@
   "main.tray": "Сворачивать в трей",
   "main.startup": "Запуск",
   "main.autostart": "Запускать вместе с Windows",
+  "main.autostart.other": "Запускается другая копия по адресу: {0}",
   "main.settings": "Настройки",
   "main.settings.note": "Один файл со всем: экран и порт, раскладка, цвета, захват, питание.",
   "main.logs": "Журнал",
@@ -242,5 +243,5 @@
   "calib.toMagenta": "к пурпурному {0}",
   "calib.toCyan": "к бирюзовому {0}",
   "_name": "Русский",
-  "_version": "45"
+  "_version": "46"
 }

@@ -116,6 +116,14 @@ public partial class MainWindow : Window
     /// </summary>
     bool _reallyClosing;
 
+    /// <summary>Settings ask for it, or the copy that restarted this one was out of sight.</summary>
+    readonly bool _startMinimized;
+
+    RuntimeWatch? _runtime;
+
+    /// <summary>Set when closing to restart onto a new runtime: whether the next copy starts hidden.</summary>
+    bool? _restartMinimized;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -155,7 +163,9 @@ public partial class MainWindow : Window
         // on screen for a second or two while the tray icon and the sections were built - at
         // logon, with autostart on, that frame was the first thing to appear. MouseKeep 0.7.2
         // had the same and was fixed the same way.
-        if (_cfg.StartMinimized)
+        _startMinimized = _cfg.StartMinimized
+            || Array.IndexOf(Environment.GetCommandLineArgs(), RuntimeWatch.MinimizedArg) > 0;
+        if (_startMinimized)
         {
             WindowState = WindowState.Minimized;
             ShowActivated = false;
@@ -223,11 +233,23 @@ public partial class MainWindow : Window
             // StateChanged is not raised for the state the window was shown in, so the move
             // into the tray is made here; the taskbar button comes back for when the window
             // is opened from the tray
-            if (_cfg.StartMinimized && _cfg.MinimizeToTray)
+            if (_startMinimized && _cfg.MinimizeToTray)
             {
                 Hide();
                 ShowInTaskbar = true;
             }
+
+            _runtime = new RuntimeWatch();
+            ProbeLog.Log(Loc.P("рантайм", "runtime"), Loc.P("слежу за ", "watching ") + _runtime.Describe());
+            _runtime.Replaced += (old, now) =>
+            {
+                ProbeLog.Log(Loc.P("рантайм", "runtime"),
+                    Loc.P($"{old} удалён обновлением, перезапуск на {now}",
+                          $"{old} removed by an update, restarting on {now}"));
+                _restartMinimized = !IsVisible || WindowState == WindowState.Minimized;
+                _reallyClosing = true;
+                Close();
+            };
 
             // after the engine, and not awaited: a slow answer from GitHub must not hold
             // up the strip lighting
@@ -296,6 +318,14 @@ public partial class MainWindow : Window
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
             _power.Dispose();
             _engine.Dispose();
+
+            // after the engine: the new copy opens the port this one has just let go of
+            if (_restartMinimized is bool minimized)
+            {
+                if (RuntimeWatch.Launch(minimized)) RuntimeWatch.EndNow();
+                ProbeLog.Log(Loc.P("рантайм", "runtime"),
+                    Loc.P("не удалось запустить новую копию", "could not start a new copy"));
+            }
         };
     }
 

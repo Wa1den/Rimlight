@@ -71,7 +71,7 @@ Rimlight работает с той же прошивкой без измене�
 ## Что нужно
 
 - Windows 10 2004 или новее (лучше Windows 11)
-- [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Контроллер ленты на COM-порту: Arduino с прошивкой Adalight, например
   [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight), или плата на RP2040 с
   прошивкой [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico). Выход RP2040 даёт
@@ -352,7 +352,7 @@ dark scene would be read as a bar.
 ## Requirements
 
 - Windows 10 2004 or newer (Windows 11 recommended)
-- [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - An LED controller on a serial port: an Arduino running Adalight firmware, for example
   [Gyver_Ambilight](https://github.com/AlexGyver/Arduino_Ambilight), or an RP2040 board
   running [HyperSerialPico](https://github.com/awawa-dev/HyperSerialPico). The RP2040 output is

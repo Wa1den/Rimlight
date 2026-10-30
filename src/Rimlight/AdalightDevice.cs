@@ -483,20 +483,22 @@ public sealed class AdalightDevice : IDisposable
     /// Darkens the strip and waits for the frame to leave the port, used on exit, lock,
     /// sleep and display off.
     /// </summary>
-    public void Blackout()
+    /// <returns>Whether every repeat was written and drained.</returns>
+    public bool Blackout()
     {
         lock (_io)
         {
-            if (_port is not { IsOpen: true }) return;
+            if (_port is not { IsOpen: true }) return false;
 
             var black = new byte[_ledCount * 3];
             for (int i = 0; i < BlackoutRepeats; i++)
             {
                 WaitForController();
-                if (!SendCore(black, onlyOnChange: false, keepAliveMs: 0, force: true)) return;
+                if (!SendCore(black, onlyOnChange: false, keepAliveMs: 0, force: true)) return false;
             }
 
             Drain();
+            return true;
         }
     }
 

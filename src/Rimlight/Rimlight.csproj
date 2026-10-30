@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows10.0.22621.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
@@ -15,8 +15,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RootNamespace>Rimlight</RootNamespace>
     <AssemblyName>Rimlight</AssemblyName>
-    <Version>1.12.2</Version>
-    <!-- ThemeMode (Fluent) is still marked experimental in .NET 9 -->
+    <Version>1.13.0</Version>
+    <!-- ThemeMode (Fluent) is still marked experimental in .NET 10 -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
 
@@ -31,7 +31,7 @@
 
   <ItemGroup>
     <Resource Include="icon.ico" />
-    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
     <ProjectReference Include="..\Rimlight.Core\Rimlight.Core.csproj" />
   </ItemGroup>
 

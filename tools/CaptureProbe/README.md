@@ -44,7 +44,7 @@ MPO (ошибок захвата нет).
 dotnet run --project tools/CaptureProbe
 ```
 
-Или собранный exe: `tools/CaptureProbe/bin/Debug/net9.0-windows10.0.22621.0/CaptureProbe.exe`
+Или собранный exe: `tools/CaptureProbe/bin/Debug/net10.0-windows10.0.22621.0/CaptureProbe.exe`
 
 Все три бэкенда стартуют автоматически. Окно вынести на второй монитор, в списке сверху
 выбрать монитор с лентой (по умолчанию основной).

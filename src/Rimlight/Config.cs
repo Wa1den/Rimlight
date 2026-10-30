@@ -135,6 +135,13 @@ public sealed class RimlightConfig
 
     public double DepthPercent { get; set; } = 5.0;
 
+    /// <summary>
+    /// Width of the stretch in the middle of the bottom edge that has no strip - Prismatik's
+    /// "bottom gap", for the monitor stand. A percentage of width like the margins; the
+    /// bottom count covers both parts together.
+    /// </summary>
+    public double BottomGapPercent { get; set; }
+
     [JsonIgnore]
     public int TotalLeds => TopCount + BottomCount + LeftCount + RightCount;
 
@@ -629,6 +636,7 @@ public sealed class RimlightConfig
         nameof(TopCount), nameof(BottomCount), nameof(LeftCount), nameof(RightCount),
         nameof(StartCorner), nameof(CounterClockwise), nameof(IndexOffset),
         nameof(EdgeMarginPercent), nameof(EdgeMarginPercentV), nameof(DepthPercent),
+        nameof(BottomGapPercent),
 
         nameof(Language)
     }.Concat(Geometry).ToArray();
@@ -764,6 +772,7 @@ public sealed record DeviceProfile
     public double EdgeMarginPercent { get; init; } = D.EdgeMarginPercent;
     public double EdgeMarginPercentV { get; init; } = D.EdgeMarginPercentV;
     public double DepthPercent { get; init; } = D.DepthPercent;
+    public double BottomGapPercent { get; init; } = D.BottomGapPercent;
 
     public double MaxBrightness { get; init; } = D.MaxBrightness;
     public double Boost { get; init; } = D.Boost;

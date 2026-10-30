@@ -102,6 +102,6 @@ Rimlight) и интервал смены цвета.
 dotnet run --project tools/LatencyProbe
 ```
 
-Или собранный exe: `tools/LatencyProbe/bin/Debug/net9.0-windows10.0.22621.0/LatencyProbe.exe`
+Или собранный exe: `tools/LatencyProbe/bin/Debug/net10.0-windows10.0.22621.0/LatencyProbe.exe`
 
 Esc на сетке — убрать её; закрытие сетки останавливает и замер.

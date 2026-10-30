@@ -83,6 +83,8 @@
   "layout.margin": "Corner margin, horizontal, % of width",
   "layout.marginV": "Corner margin, vertical, % of width",
   "layout.depth": "Zone depth, % of width",
+  "layout.gap": "Bottom gap at the centre, % of width",
+  "layout.gap.note": "Stretch in the middle of the bottom edge with no strip, for example at the monitor stand. The bottom LEDs are split evenly between the parts to the left and right of the gap.",
   "layout.note": "Margin between the zones and the screen edge, used to align the preview with the physical LED positions. Percentages are of screen width.",
   "layout.total": "Total LEDs: {0}",
   "crop.head": "Material wider than the screen comes with black bars above and below it, and the LEDs along them do not light. The program finds the edges of the picture and moves the sampling zones inside them.",
@@ -243,5 +245,5 @@
   "calib.toMagenta": "to magenta {0}",
   "calib.toCyan": "to cyan {0}",
   "_name": "English",
-  "_version": "46"
+  "_version": "47"
 }

@@ -20,7 +20,7 @@ public static class Loc
     /// silently shadowed newly reworded labels, so a mismatched version rewrites it. Only
     /// the two built-in files are rewritten; added languages are left alone.
     /// </summary>
-    const string Version = "46";
+    const string Version = "47";
 
     /// <summary>
     /// Bookkeeping entries rather than translated text: the version a file was written
@@ -324,6 +324,8 @@ public static class Loc
         ["layout.margin"] = "Отступ от углов по горизонтали, % ширины",
         ["layout.marginV"] = "Отступ от углов по вертикали, % ширины",
         ["layout.depth"] = "Глубина зоны, % ширины",
+        ["layout.gap"] = "Вырез снизу по центру, % ширины",
+        ["layout.gap.note"] = "Участок в середине нижней стороны без ленты, например под ножкой монитора. Диоды снизу делятся поровну между частями слева и справа от выреза.",
         ["layout.note"] = "Отступ зон от края экрана: сопоставляет превью с реальным положением диодов. Проценты считаются от ширины экрана.",
         ["layout.total"] = "Всего диодов: {0}",
 
@@ -583,6 +585,8 @@ public static class Loc
         ["layout.margin"] = "Corner margin, horizontal, % of width",
         ["layout.marginV"] = "Corner margin, vertical, % of width",
         ["layout.depth"] = "Zone depth, % of width",
+        ["layout.gap"] = "Bottom gap at the centre, % of width",
+        ["layout.gap.note"] = "Stretch in the middle of the bottom edge with no strip, for example at the monitor stand. The bottom LEDs are split evenly between the parts to the left and right of the gap.",
         ["layout.note"] = "Margin between the zones and the screen edge, used to align the preview with the physical LED positions. Percentages are of screen width.",
         ["layout.total"] = "Total LEDs: {0}",
 

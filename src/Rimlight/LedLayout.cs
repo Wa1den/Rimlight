@@ -47,7 +47,21 @@ public static class LedLayout
         AddVertical(ring, cfg.RightCount, 1 - my, my, 1 - dx, 1.0, Side.Right);
         AddHorizontal(ring, cfg.TopCount, 1 - mx, mx, 0.0, dy, Side.Top);
         AddVertical(ring, cfg.LeftCount, my, 1 - my, 0.0, dx, Side.Left);
-        AddHorizontal(ring, cfg.BottomCount, mx, 1 - mx, 1 - dy, 1.0, Side.Bottom);
+
+        // Under a monitor stand the strip is cut and bridged with wire, so the bottom has
+        // no LEDs in the middle. Both parts are the same length, hence the same count; an
+        // odd count leaves the extra LED on the right.
+        double gap = Math.Clamp(cfg.BottomGapPercent / 100.0, 0, Math.Max(0, 1 - 2 * mx - 0.02));
+        if (gap > 0 && cfg.BottomCount >= 2)
+        {
+            int left = cfg.BottomCount / 2;
+            AddHorizontal(ring, left, mx, 0.5 - gap / 2, 1 - dy, 1.0, Side.Bottom);
+            AddHorizontal(ring, cfg.BottomCount - left, 0.5 + gap / 2, 1 - mx, 1 - dy, 1.0, Side.Bottom);
+        }
+        else
+        {
+            AddHorizontal(ring, cfg.BottomCount, mx, 1 - mx, 1 - dy, 1.0, Side.Bottom);
+        }
 
         if (ring.Count == 0) return Array.Empty<LedZone>();
 

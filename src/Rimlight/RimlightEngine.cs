@@ -864,20 +864,38 @@ public sealed class RimlightEngine : IDisposable
     /// Blocks until the black frame is on the wire, because the caller is often the
     /// suspend notification and the machine stops taking bytes moments after it returns.
     /// </summary>
-    public void Pause(string reason)
+    /// <param name="resend">
+    /// Send the black frame even if the strip is already paused. For sleep and shutdown,
+    /// the last moment the port takes bytes: the frame sent when the display went off may
+    /// have been lost, and the keepalive that would repeat it does not get another turn.
+    /// </param>
+    public void Pause(string reason, bool resend = false)
     {
-        bool already;
+        bool already, sent = false, landed = false;
+        long start = Stopwatch.GetTimestamp();
         lock (_sendGate)
         {
             already = _paused;
             _pauseReason = reason;
             _paused = true;
-            if (!already) _device.Blackout();
+            if (!already || resend)
+            {
+                sent = true;
+                landed = _device.Blackout();
+            }
         }
 
         // Reported again when the reason changes: the display goes off first and the
         // session locks after it, and the warning used to keep naming the display.
-        ProbeLog.Log(Loc.P("движок", "engine"), Loc.P("пауза: ", "paused: ") + reason);
+        string line = Loc.P("пауза: ", "paused: ") + reason;
+        if (sent)
+        {
+            double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            line += landed
+                ? Loc.P($", чёрный кадр отправлен за {ms:0} мс", $", black frame sent in {ms:0} ms")
+                : Loc.P(", чёрный кадр не записан в порт", ", black frame not written to the port");
+        }
+        ProbeLog.Log(Loc.P("движок", "engine"), line);
     }
 
     /// <param name="holdOffMs">

@@ -26,7 +26,7 @@ sealed class RuntimeWatch
     /// <summary>Command-line flag: the previous copy was in the tray or minimised.</summary>
     public const string MinimizedArg = "--minimized";
 
-    readonly List<string> _frameworks = new();   // version folders, e.g. ...\Microsoft.NETCore.App\10.0.14
+    readonly List<string> _frameworks = new();   // папки версий, например ...\Microsoft.NETCore.App\10.0.14
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(10) };
     bool _readyOnce;
 
@@ -38,10 +38,10 @@ sealed class RuntimeWatch
         AddFramework(typeof(object));
         AddFramework(typeof(System.Windows.Window));
 
-        // a self-contained or otherwise unusual layout has nothing to watch
+        // у автономной сборки следить не за чем
         if (_frameworks.Count == 0) return;
 
-        // the first check runs now, while every file it touches is still on disk
+        // первая проверка сразу, пока все нужные ей файлы на месте
         Check();
         _timer.Tick += (_, _) => Check();
         _timer.Start();
@@ -69,7 +69,7 @@ sealed class RuntimeWatch
         {
             if (File.Exists(DepsFile(dir))) continue;
             string? newer = NewerPatch(dir);
-            // removed with nothing to move to yet: keep running on what is loaded
+            // старый удалён, нового ещё нет: работаем на загруженном
             if (newer == null) { _readyOnce = false; return; }
             removed = Path.GetFileName(dir);
             replacement = newer;

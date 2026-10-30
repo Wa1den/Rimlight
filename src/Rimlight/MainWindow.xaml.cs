@@ -218,6 +218,7 @@ public partial class MainWindow : Window
         Loaded += (_, _) =>
         {
             _power.Attach(this);
+            System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(SessionEndHook);
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
             SetupTray();
             UpdateChromeMetrics();
@@ -319,7 +320,7 @@ public partial class MainWindow : Window
             _power.Dispose();
             _engine.Dispose();
 
-            // after the engine: the new copy opens the port this one has just let go of
+            // после движка: новая копия открывает порт, который эта только что освободила
             if (_restartMinimized is bool minimized)
             {
                 if (RuntimeWatch.Launch(minimized)) RuntimeWatch.EndNow();
@@ -349,8 +350,35 @@ public partial class MainWindow : Window
         // продолжает слать его сам, захват для этого не нужен.
         _engine.Freeze(state.DisplayOff && !_cfg.OffOnDisplayOff);
 
-        if (reason != null) _engine.Pause(reason);
+        // сон повторяет чёрный кадр, даже если лента уже погашена вместе с экраном
+        bool fallingAsleep = state.Suspended && !_lastPower.Suspended;
+        _lastPower = state;
+
+        if (reason != null) _engine.Pause(reason, resend: fallingAsleep);
         else if (_outputWanted) _engine.Resume(WakeHoldOffMs(state));
+    }
+
+    PowerState _lastPower;
+
+    /// <summary>
+    /// Darkens the strip while Windows waits for the answer to "may the session end".
+    ///
+    /// The Closing handler does the same on exit, but on shutdown WPF answers this message
+    /// first and closes its windows afterwards, from the dispatcher queue, and Windows is
+    /// free to end the process once the session-end messages have been answered. In a test
+    /// the window closed 83 ms after the message.
+    ///
+    /// Nothing turns the strip back on if the shutdown is cancelled: WPF shuts the program
+    /// down on this message alone, cancelled or not.
+    /// </summary>
+    IntPtr SessionEndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_QUERYENDSESSION = 0x0011;
+
+        if (msg == WM_QUERYENDSESSION && _cfg.OffOnExit && _engine.IsRunning)
+            _engine.Pause(Loc.P("завершение работы Windows", "Windows session ending"), resend: true);
+
+        return IntPtr.Zero;
     }
 
     // ---- смена конфигурации экранов ----------------------------------------
@@ -1136,6 +1164,8 @@ public partial class MainWindow : Window
                 v => { _cfg.EdgeMarginPercentV = v; _engine.RequestRelayout(); }, help: Loc.T("layout.note")));
             panel.Children.Add(Slider(Loc.T("layout.depth"), _cfg.DepthPercent, 1, 25, 0.5,
                 v => { _cfg.DepthPercent = v; _engine.RequestRelayout(); }, help: Loc.T("layout.note")));
+            panel.Children.Add(Slider(Loc.T("layout.gap"), _cfg.BottomGapPercent, 0, 40, 0.5,
+                v => { _cfg.BottomGapPercent = v; _engine.RequestRelayout(); }, help: Loc.T("layout.gap.note")));
 
             var totalRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
             _totalText = Text("");
